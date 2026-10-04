@@ -27,7 +27,7 @@
 ## 설치 (3단계)
 
 ```bash
-git clone https://github.com/<owner>/OSMU_studio.git
+git clone https://github.com/jkwon-startup/OSMU_studio.git
 cd OSMU_studio
 claude
 ```

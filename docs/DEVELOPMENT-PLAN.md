@@ -176,6 +176,29 @@ OSMU_studio/
 | 하루 비용·시간 | 60~90분, API 기준 $5~15/일 추정. 예산 상한, 비용을 알림에 표기 |
 | 설치자의 전역 Claude 설정 간섭 | `--strict-mcp-config`, MCP 도구 금지. 나머지는 README에 명시 |
 
+## 12-1. 구현 현황 (2026-10-04)
+
+| 단계 | 상태 | 검증 |
+|---|---|---|
+| 0 최소 검증 | 완료 | selftest(Slack·Pixverse·ElevenLabs·FFmpeg PASS), 주제 선택 테스트, 무인 권한 프로브 |
+| 1 기반 | 완료 | 실행기·잠금·KST 가드·argv·알림 문구 단위 테스트, dry-run |
+| 2 규칙 파일 | 완료 | 규칙 11개 + 분포 데이터, 필수 섹션 테스트 |
+| 3 글 파이프라인 | 완료 | 샘플 주제 1건 제작 세션 통과(19분, 50턴, $14.4), 규격 검사 23항목 OK |
+| 4 이미지 | 완료(Pixverse 검증, Gemini는 키 한도로 미검증) | 가로 실사·텍스트 없음, 3:4 한글 카피 합성 확인 |
+| 5 숏츠 | 완료 | ElevenLabs 문장별 TTS 29.0s, Pixverse 장면 6 + 클립 3, 합성 -16.3 LUFS, freeze 0 |
+| 6 모션 | 완료 | Remotion 4 템플릿 렌더, Node 없을 때 Pillow 카드 폴백 테스트 |
+| 7 예약·설치 | 완료 | launchd 등록·상태·해제 왕복, task.xml 생성·파싱, /osmu-setup·/osmu-style 커맨드 |
+| 윤문 연동 | 완료 | humanize-korean 프로젝트 범위 설치(`enabledPlugins`), 무인 권한에서 스킬·shim·게이트 실행 확인, 자체 게이트 pass |
+| 8 Windows | 대기 | CI 매트릭스(windows-latest) + `windows-e2e.yml`(수동) + `docs/WINDOWS-CHECKLIST.md`. 사용자 Windows 컴퓨터 확인 필요 |
+| 9 배포 | 대기 | 로컬 첫 커밋 완료(81 파일, 비밀값 검사 통과). GitHub 저장소 생성·push 는 사용자 승인 후 |
+
+실측 중 고친 설계
+- 무인 권한 규칙: Bash 접두 매칭은 ` *`(공백+별표)만 유효 → 플러그인 스크립트별로 한 줄씩. 경로 규칙은 `//` + 절대경로(`//Users/…`). `python_path` 는 심링크를 풀지 않은 경로로 저장(명령줄 문자열과 일치해야 함).
+- 프로젝트 `.claude/settings.json` 의 deny 는 `.env` 읽기·curl·wget·rm -rf 만. scripts/config/rules 수정 금지는 무인 세션 `--settings` 에만(개발·설치 세션을 막지 않게).
+- Pixverse 결과 URL 은 User-Agent 없는 요청을 403 으로 거부 → 다운로드에 UA 헤더.
+- 품질 민감도가 낮은 팀원(SNS·검수·숏폼·비주얼)은 sonnet, 리서처 sonnet, 전략가·카피·블로그 작가는 inherit.
+- 윤문은 채널당 $1~3(스킬이 opus 서브에이전트 사용) → `humanize_channels` 로 조절 가능.
+
 ## 13. 미확인 항목과 실측 결과
 
 | # | 항목 | 결과 (2026-10-03 0단계) |
