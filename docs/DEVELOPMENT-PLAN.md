@@ -189,8 +189,9 @@ OSMU_studio/
 | 6 모션 | 완료 | Remotion 4 템플릿 렌더, Node 없을 때 Pillow 카드 폴백 테스트 |
 | 7 예약·설치 | 완료 | launchd 등록·상태·해제 왕복, task.xml 생성·파싱, /osmu-setup·/osmu-style 커맨드 |
 | 윤문 연동 | 완료 | humanize-korean 프로젝트 범위 설치(`enabledPlugins`), 무인 권한에서 스킬·shim·게이트 실행 확인, 자체 게이트 pass |
-| 8 Windows | 대기 | CI 매트릭스(windows-latest) + `windows-e2e.yml`(수동) + `docs/WINDOWS-CHECKLIST.md`. 사용자 Windows 컴퓨터 확인 필요 |
-| 9 배포 | 대기 | 로컬 첫 커밋 완료(81 파일, 비밀값 검사 통과). GitHub 저장소 생성·push 는 사용자 승인 후 |
+| macOS 전체 실행 | 완료 | `daily.py --now` 1회: 조사 3 → 제작(블로그 4,350자·인스타·쓰레드·이미지 6·모션 숏츠 29초) → 윤문 4채널 pass → 검수 pass → Slack 알림. 23분, $15.19 |
+| 8 Windows | 진행 중 | CI 매트릭스(windows-latest)에서 콘솔 인코딩·xlsx 파일 잠금 버그 발견·수정. `windows-e2e.yml`(수동) + `docs/WINDOWS-CHECKLIST.md`. 사용자 Windows 컴퓨터 확인 필요 |
+| 9 배포 | 완료 | https://github.com/jkwon-startup/OSMU_studio (public, main). 비밀값 검사 통과 |
 
 실측 중 고친 설계
 - 무인 권한 규칙: Bash 접두 매칭은 ` *`(공백+별표)만 유효 → 플러그인 스크립트별로 한 줄씩. 경로 규칙은 `//` + 절대경로(`//Users/…`). `python_path` 는 심링크를 풀지 않은 경로로 저장(명령줄 문자열과 일치해야 함).
