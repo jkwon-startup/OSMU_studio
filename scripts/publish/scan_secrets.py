@@ -78,6 +78,11 @@ def scan(files: list[Path]) -> list[tuple[Path, int, str]]:
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):  # Windows 콘솔(cp1252/cp949)에서 한글 출력 깨짐 방지
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--staged", action="store_true")
     ap.add_argument("--files", nargs="*")
