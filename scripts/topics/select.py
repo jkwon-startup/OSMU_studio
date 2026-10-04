@@ -144,8 +144,11 @@ def _read_rows(path_or_url: str) -> list[dict]:
     p = Path(path_or_url).expanduser()
     if p.suffix.lower() in (".xlsx", ".xlsm"):
         import openpyxl  # 선택 의존성
-        ws = openpyxl.load_workbook(p, read_only=True, data_only=True).active
-        rows = [list(r) for r in ws.iter_rows(values_only=True)]
+        wb = openpyxl.load_workbook(p, read_only=True, data_only=True)
+        try:
+            rows = [list(r) for r in wb.active.iter_rows(values_only=True)]
+        finally:
+            wb.close()  # Windows 에서 파일 잠금 해제 (닫지 않으면 Excel·삭제가 막힌다)
         return _rows_from_lists(rows)
     return _rows_from_csv_bytes(p.read_bytes())
 

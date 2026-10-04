@@ -44,7 +44,7 @@ const KineticFull: React.FC<{ text: string; colors: Colors }> = ({ text, colors 
     <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 90 }}>
       <div style={{ fontSize: text.length > 10 ? 96 : 120, fontWeight: 800, lineHeight: 1.25, textAlign: "center", wordBreak: "keep-all" }}>
         {words.map((w, i) => (
-          <Word key={i} delay={i * 4} colors={colors} highlight={/\d/.test(w)}>{w}{" "}</Word>
+          <Word key={i} delay={i * 4} colors={colors} highlight={/\d/.test(w)}>{w}</Word>
         ))}
       </div>
     </div>
@@ -53,7 +53,8 @@ const KineticFull: React.FC<{ text: string; colors: Colors }> = ({ text, colors 
 
 const Word: React.FC<{ delay: number; colors: Colors; highlight: boolean; children: React.ReactNode }> = ({ delay, colors, highlight, children }) => {
   const { opacity, translateY } = useEnter(delay);
-  return <span style={{ display: "inline-block", opacity, transform: `translateY(${translateY}px)`, color: highlight ? colors.accent : colors.text }}>{children}</span>;
+  // inline-block 은 뒤따르는 공백을 접어 버리므로 단어 사이는 margin 으로 띄운다
+  return <span style={{ display: "inline-block", marginRight: "0.28em", opacity, transform: `translateY(${translateY}px)`, color: highlight ? colors.accent : colors.text }}>{children}</span>;
 };
 
 const BulletCard: React.FC<{ title: string; items: string[]; colors: Colors }> = ({ title, items, colors }) => {
