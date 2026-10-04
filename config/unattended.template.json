@@ -1,0 +1,43 @@
+{
+  "_comment": "무인(헤드리스) 제작 세션 권한. daily.py 가 {{ROOT}}·{{PY}}·{{HUMANIZE_ROOT}} 를 채워 unattended.local.json 을 만든다. 경로 규칙은 // 로 시작하는 절대경로. Bash 접두 매칭은 ' *'(공백+별표)만 유효하므로 스크립트별로 한 줄씩 둔다.",
+  "permissions": {
+    "allow": [
+      "Read(//{{ROOT}}/**)",
+      "Read(//{{HUMANIZE_ROOT}}/**)",
+      "Edit(//{{ROOT}}/output/**)",
+      "Write(//{{ROOT}}/output/**)",
+      "Edit(//{{ROOT}}/_workspace/**)",
+      "Write(//{{ROOT}}/_workspace/**)",
+      "Bash({{PY}} scripts/osmu.py *)",
+      "Bash(python3 /{{HUMANIZE_ROOT}}/scripts/prepare_monolith_input.py *)",
+      "Bash(python3 /{{HUMANIZE_ROOT}}/scripts/verify_gates.py *)",
+      "Bash(python3 /{{HUMANIZE_ROOT}}/scripts/verify_change_rate.py *)",
+      "Bash(python3 /{{HUMANIZE_ROOT}}/scripts/reassemble_chunks.py *)",
+      "Bash(python3 /{{HUMANIZE_ROOT}}/scripts/restore_modality.py *)",
+      "Bash(python3 /{{HUMANIZE_ROOT}}/scripts/strip_injected_commas.py *)",
+      "Bash(python3 /{{HUMANIZE_ROOT}}/scripts/sanitize_text.py *)",
+      "Bash(mkdir *)",
+      "Bash(npx remotion render *)",
+      "Skill(humanize-korean *)",
+      "Agent"
+    ],
+    "deny": [
+      "WebSearch",
+      "WebFetch",
+      "Read(//{{ROOT}}/.env)",
+      "Read(//{{ROOT}}/.env.*)",
+      "Edit(//{{ROOT}}/scripts/**)",
+      "Edit(//{{ROOT}}/config/**)",
+      "Edit(//{{ROOT}}/rules/**)",
+      "Edit(//{{ROOT}}/.claude/**)",
+      "Write(//{{ROOT}}/scripts/**)",
+      "Write(//{{ROOT}}/config/**)",
+      "Write(//{{ROOT}}/rules/**)",
+      "Write(//{{ROOT}}/.claude/**)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(git *)",
+      "Bash(rm *)"
+    ]
+  }
+}

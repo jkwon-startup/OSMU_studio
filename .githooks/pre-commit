@@ -1,0 +1,5 @@
+#!/bin/sh
+# 커밋 전 비밀값·개인 경로 검사. 설치: git config core.hooksPath .githooks
+# Windows(Git Bash)에서도 동작하도록 python3 → python 순으로 찾는다.
+if command -v python3 >/dev/null 2>&1; then PY=python3; else PY=python; fi
+exec "$PY" scripts/publish/scan_secrets.py --staged

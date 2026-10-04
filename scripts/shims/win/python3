@@ -1,0 +1,5 @@
+#!/bin/sh
+# Windows Git Bash 용 python3 심 — humanize-korean 플러그인 스크립트가 `python3` 를 부르는데 Windows 에는 보통 `python` 만 있다.
+# 사용: Git Bash 에서 export PATH="$(pwd)/scripts/shims/win:$PATH"  (/osmu-setup 이 안내)
+if command -v py >/dev/null 2>&1; then exec py -3 "$@"; fi
+exec python "$@"

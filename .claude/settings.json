@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(rm -rf *)"
+    ]
+  },
+  "enabledPlugins": {
+    "humanize-korean@im-not-ai": true
+  },
+  "extraKnownMarketplaces": {
+    "im-not-ai": {
+      "source": {
+        "source": "github",
+        "repo": "epoko77-ai/im-not-ai"
+      }
+    }
+  }
+}

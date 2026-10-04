@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install FFmpeg
+        uses: FedericoCarboni/setup-ffmpeg@v3
+      - name: Install Python deps
+        run: python -m pip install -r requirements.txt
+      - name: Secret scan (전체 추적 파일)
+        run: python scripts/publish/scan_secrets.py
+      - name: Doctor (도구 점검 — claude 미설치는 허용)
+        run: python scripts/osmu.py doctor || true
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: FFmpeg compose smoke
+        run: python scripts/osmu.py selftest --only ffmpeg_compose

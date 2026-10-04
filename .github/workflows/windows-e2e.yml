@@ -1,0 +1,82 @@
+# Windows 전체 실행(LLM 포함) — 수동 트리거. 비용이 발생하므로 자동으로 돌리지 않는다.
+# 필요한 저장소 Secrets: ANTHROPIC_API_KEY (필수), ELEVENLABS_API_KEY 또는 GEMINI_API_KEY (음성·이미지), SLACK_WEBHOOK_URL (선택)
+name: windows-e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "테스트 주제 (짧게)"
+        default: "직장인 부업 블로그 첫 글 쓰는 법"
+      video_style:
+        description: "실사 | 모션그래픽"
+        default: "모션그래픽"
+
+jobs:
+  e2e:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install FFmpeg
+        uses: FedericoCarboni/setup-ffmpeg@v3
+      - name: Install Claude Code
+        shell: pwsh
+        run: |
+          irm https://claude.ai/install.ps1 | iex
+          echo "$env:USERPROFILE\.local\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: Python deps
+        run: python -m pip install -r requirements.txt
+      - name: Prepare config and topic
+        shell: pwsh
+        env:
+          TOPIC: ${{ github.event.inputs.topic }}
+          STYLE: ${{ github.event.inputs.video_style }}
+        run: |
+          New-Item -ItemType Directory -Force -Path output/topics | Out-Null
+          Set-Content -Path "output/topics/1. e2e.md" -Value "---`ntitle: $env:TOPIC`nvideo_style: $env:STYLE`n---`nCI e2e 테스트 주제" -Encoding UTF8
+          $cfg = Get-Content config/config.example.json -Raw | ConvertFrom-Json
+          $cfg.topics.source = "folder"; $cfg.topics.path = (Resolve-Path output/topics).Path
+          $cfg.image_provider = "gemini"; $cfg.tts_provider = "gemini"; $cfg.shorts_duration_s = 15; $cfg.max_budget_usd = 12
+          $cfg | Add-Member -NotePropertyName python_path -NotePropertyValue (Get-Command python).Source -Force
+          $cfg | Add-Member -NotePropertyName humanize_channels -NotePropertyValue @("blog") -Force
+          $cfg | ConvertTo-Json -Depth 6 | Set-Content config/config.local.json -Encoding UTF8
+      - name: Write .env from secrets
+        shell: pwsh
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          "GEMINI_API_KEY=$env:GEMINI_API_KEY`nELEVENLABS_API_KEY=$env:ELEVENLABS_API_KEY`nSLACK_WEBHOOK_URL=$env:SLACK_WEBHOOK_URL" | Set-Content .env -Encoding UTF8
+      - name: Doctor
+        run: python scripts/osmu.py doctor
+      - name: Schedule render (XML) and dry registration
+        shell: pwsh
+        run: |
+          python scripts/osmu.py schedule render --windows --out output/task.xml
+          python scripts/osmu.py schedule install
+          python scripts/osmu.py schedule status
+          python scripts/osmu.py schedule uninstall
+      - name: Full run
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python scripts/run/daily.py --now
+      - name: Check outputs
+        shell: pwsh
+        run: |
+          $d = Get-ChildItem output/runs | Sort-Object Name | Select-Object -Last 1
+          python scripts/osmu.py check $d.FullName
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: osmu-e2e-output
+          path: |
+            output/runs/**
+            !output/runs/**/*.log

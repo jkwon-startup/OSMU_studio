@@ -1,0 +1,20 @@
+{
+  "name": "osmu-motion",
+  "private": true,
+  "version": "0.1.0",
+  "description": "OSMU Studio 숏츠 모션그래픽 컴포넌트 (Remotion). 개인·3인 이하 팀 무료, 그 이상은 Remotion Company License 필요.",
+  "scripts": {
+    "render": "remotion render Scene out/scene.mp4",
+    "preview": "remotion studio"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.260",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "remotion": "4.0.260"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.0",
+    "typescript": "5.7.3"
+  }
+}

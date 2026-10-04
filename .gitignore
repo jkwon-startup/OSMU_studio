@@ -1,0 +1,40 @@
+# 비밀값 — 값이 들어간 파일은 절대 올리지 않는다
+.env
+.env.*
+!.env.example
+
+# 설치자 로컬 설정·산출물
+config/*.local.*
+config/references/
+config/private-patterns.local.txt
+output/
+_workspace/
+logs/
+.claude/settings.local.json
+
+# 실행 환경
+.venv/
+__pycache__/
+*.pyc
+motion/node_modules/
+motion/out/
+motion/.remotion/
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 미디어 — 테스트 픽스처만 예외
+*.mp4
+*.mp3
+*.wav
+*.m4a
+*.mov
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.zip
+!tests/fixtures/**/*.png
+!assets/**/*.png
