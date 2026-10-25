@@ -267,6 +267,7 @@ docker compose run --rm --entrypoint python osmu scripts/run/daily.py --now
 
 ## 문서
 
+- `docs/UPDATE-1.1.md` — 1.1 업데이트 내용(무료 경로·영상 품질·HTML 모션·설치 도우미)과 기존 사용자 업데이트 방법
 - `docs/TROUBLESHOOTING.md` — 자주 막히는 곳과 해결
 - `docs/DEVELOPMENT-PLAN.md` — 설계와 결정 기록
 - `rules/` — 팀원이 읽는 글쓰기·채널 규칙 (여기를 고치면 결과물이 바뀝니다)
