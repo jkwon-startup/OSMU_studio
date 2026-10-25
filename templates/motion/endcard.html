@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- 마무리 카드. props: title, sub -->
+<link rel="stylesheet" href="_base.css">
+<style>
+  .wrap { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+          padding: calc(var(--u) * 8.5); text-align: center; }
+  .title { font-size: calc(var(--u) * 9.6); font-weight: 800; line-height: 1.2; }
+  .sub { margin-top: calc(var(--u) * 3.7); font-size: calc(var(--u) * 4.4); }
+  .line { width: calc(var(--u) * 12); height: calc(var(--u) * 0.8); background: var(--accent); margin: calc(var(--u) * 4) auto 0; border-radius: 99px; }
+</style>
+</head><body>
+<div class="bar"></div>
+<div class="wrap">
+  <div class="title enter">{{title:text=}}</div>
+  <div class="line enter" style="--d: 0.2s"></div>
+  <div class="sub muted enter" style="--d: 0.33s">{{sub:text=전체 글은 블로그에서}}</div>
+</div>
+</body></html>

@@ -144,9 +144,11 @@ def cmd_video(a):
         script = json.loads((sdir / "script.json").read_text(encoding="utf-8"))
         timing = json.loads((sdir / "timing.json").read_text(encoding="utf-8"))
         style = a.style or script.get("style") or "photoreal"
-        plan = plan_schema.auto_plan(script, timing, style, cfg.get("image_provider", "stock"))
+        plan = plan_schema.auto_plan(script, timing, style, cfg.get("image_provider", "stock"),
+                                     cfg.get("shorts_aspect", "9:16"), cfg.get("shorts_transition", "fade"))
         write_json(sdir / "plan.json", plan)
-        print(f"plan.json: {len(plan['shots'])} shots, {len(plan['captions'])} captions, {plan['duration_s']}s, style={style}")
+        print(f"plan.json: {len(plan['shots'])} shots, {len(plan['captions'])} captions, {plan['duration_s']}s, "
+              f"style={style}, aspect={plan['aspect']}, transition={plan['transition']}")
     if a.action in ("plan-check", "auto-plan", "assets", "build", "all"):
         errs = plan_schema.validate_file(sdir / "plan.json")
         if errs:
@@ -164,6 +166,33 @@ def cmd_video(a):
         review = build.build(run_dir, cfg)
         print(json.dumps(review, ensure_ascii=False, indent=2))
         return 0 if review["duration_ok"] else 1
+    return 0
+
+
+def cmd_motion_preview(a):
+    """템플릿 하나를 미리 보기(PNG + 짧은 mp4) — 새 템플릿을 만들 때 확인용."""
+    from video import build, html_render
+    if a.template not in html_render.list_templates():
+        print(f"템플릿 없음: {a.template} (있는 것: {', '.join(html_render.list_templates())})")
+        return 1
+    try:
+        props = json.loads(a.props) if a.props else {}
+    except json.JSONDecodeError as e:
+        print(f"--props JSON 오류: {e}")
+        return 1
+    ok, why = html_render.available()
+    if not ok:
+        print(why)
+        return 1
+    build.set_aspect(a.aspect)
+    colors = build.brand_colors(load_config())
+    out = OUTPUT_DIR / "motion-preview"
+    out.mkdir(parents=True, exist_ok=True)
+    print("받는 값:", ", ".join(f"{p['name']}({p['type']})" for p in html_render.template_params(a.template)) or "(없음)")
+    with html_render.Renderer() as r:
+        r.still(a.template, props, out / f"{a.template}.png", colors, build.W, build.H)
+        r.video(a.template, props, float(a.seconds), out / f"{a.template}.mp4", colors, build.W, build.H)
+    print(f"→ {out / (a.template + '.png')}\n→ {out / (a.template + '.mp4')}")
     return 0
 
 
@@ -257,6 +286,8 @@ def main(argv=None) -> int:
     p = sub.add_parser("schedule"); p.add_argument("action", choices=["install", "uninstall", "status", "run-now", "render"]); p.add_argument("--label"); p.add_argument("--out"); p.add_argument("--windows", action="store_true"); p.set_defaults(fn=cmd_schedule)
     p = sub.add_parser("config-write"); p.set_defaults(fn=cmd_config_write)
     sub.add_parser("config-show").set_defaults(fn=cmd_config_show)
+    p = sub.add_parser("motion-preview"); p.add_argument("template"); p.add_argument("--props"); p.add_argument("--seconds", default="3")
+    p.add_argument("--aspect", default="9:16", choices=["9:16", "1:1", "16:9"]); p.set_defaults(fn=cmd_motion_preview)
     p = sub.add_parser("check"); p.add_argument("run_dir"); p.add_argument("--only"); p.set_defaults(fn=cmd_check)
     p = sub.add_parser("humanize-gate"); p.add_argument("original"); p.add_argument("rewritten")
     p.add_argument("--keywords"); p.add_argument("--title"); p.add_argument("--out"); p.set_defaults(fn=cmd_humanize_gate)

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- 큰 글자 한 문장. 단어가 차례로 올라오고 숫자가 든 단어는 강조색. 12자 이내 권장. -->
+<link rel="stylesheet" href="_base.css">
+<style>
+  .wrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: calc(var(--u) * 8.5); }
+  .t { font-weight: 800; line-height: 1.25; text-align: center; font-size: calc(var(--u) * 11); }
+  .t.long { font-size: calc(var(--u) * 8.9); }
+  .w { display: inline-block; margin-right: 0.28em; }
+</style>
+</head><body>
+<div class="bar"></div>
+<div class="wrap"><div class="t" id="t" data-text="{{text:text=하루 30분, 진짜 될까요?}}"></div></div>
+<script>
+  // 단어를 나눠 차례로 등장 (시간·난수를 쓰지 않는다 — 렌더러가 프레임마다 애니메이션 시점을 고정한다)
+  const el = document.getElementById("t");
+  const text = el.dataset.text.trim();
+  if (text.length > 10) el.classList.add("long");
+  text.split(/\s+/).forEach((w, i) => {
+    const s = document.createElement("span");
+    s.className = "w enter" + (/\d/.test(w) ? " accent" : "");
+    s.style.setProperty("--d", (i * 0.13).toFixed(2) + "s");
+    s.textContent = w;
+    el.appendChild(s);
+  });
+</script>
+</body></html>

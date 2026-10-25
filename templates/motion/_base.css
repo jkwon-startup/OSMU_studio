@@ -1,0 +1,23 @@
+/* 모든 모션 템플릿 공통 — 렌더러가 :root 에 --bg --accent --text --muted --dur --u 를 넣어 준다.
+   --u 는 화면 짧은 변의 1% (9:16 기준 10.8px). 크기는 --u 배수로 쓰면 1:1·16:9 에서도 비율이 맞는다. */
+@font-face { font-family: "Pretendard"; src: url("../../assets/fonts/Pretendard-Regular.otf"); font-weight: 400; }
+@font-face { font-family: "Pretendard"; src: url("../../assets/fonts/Pretendard-Bold.otf"); font-weight: 700 900; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100vw; height: 100vh; overflow: hidden; }
+html { background: var(--bg); }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  word-break: keep-all; overflow-wrap: anywhere;   /* 한글은 단어 단위로 줄바꿈 */
+}
+/* 다음 샷과 컷으로 이어질 때만 렌더러가 붙인다 — 끝에서 내용이 배경색으로 사라짐 */
+body.fade-out { animation: osmu-out 0.27s linear both; animation-delay: calc(var(--dur) - 0.27s); }
+.bar { position: absolute; top: 0; left: 0; right: 0; height: calc(var(--u) * 1.7); background: var(--accent); }
+.accent { color: var(--accent); }
+.muted { color: var(--muted); }
+
+/* 등장 애니메이션 — 지연은 style="--d: 0.3s" 처럼 요소마다 준다 */
+.enter { opacity: 0; animation: osmu-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both; animation-delay: var(--d, 0s); }
+@keyframes osmu-in { from { opacity: 0; transform: translateY(calc(var(--u) * 5.5)); } to { opacity: 1; transform: none; } }
+@keyframes osmu-out { to { opacity: 0; } }

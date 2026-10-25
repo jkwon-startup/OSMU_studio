@@ -56,7 +56,7 @@ claude
 - [ ] 알림이 왔다 (내용에 "완료" 또는 "부분 완료")
 - [ ] `shorts.mp4` 가 재생되고 자막 한글이 깨지지 않는다
 - [ ] `images\instagram.jpg` 의 한글 카피가 정상이다
-- [ ] (모션그래픽 주제라면) `08_shorts\review.json` 의 notes 에 "Remotion 없음" 이 없다 — 있으면 `cd motion; npm install` 후 재실행
+- [ ] (모션그래픽 주제라면) `08_shorts\review.json` 의 `motion` 이 `{"html": N}` 이다 — `card` 가 보이면 `.venv\Scripts\python -m playwright install chromium` 후 재실행
 
 ```powershell
 .venv\Scripts\python scripts\osmu.py check output\runs\<날짜>

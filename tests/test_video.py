@@ -71,14 +71,30 @@ class VideoBuildTest(unittest.TestCase):
         run = self._make_run("motion")
         plan = plan_schema.auto_plan(SCRIPT, TIMING, "motion", "gemini")
         (run / "08_shorts" / "plan.json").write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
-        orig = build.render_remotion
-        build.render_remotion = lambda *a, **k: False  # Node 없는 환경 가정 → Pillow 카드
+        from video import html_render
+        orig, orig_av = build.render_remotion, html_render.available
+        build.render_remotion = lambda *a, **k: False  # Node·Playwright 없는 환경 가정 → Pillow 카드
+        html_render.available = lambda: (False, "Playwright 미설치")
         try:
-            review = build.build(run, {"brand": {"colors": {"accent": "#E11D48"}}})
+            review = build.build(run, {"brand": {"colors": {"accent": "#E11D48"}}, "bgm": {"enabled": False}})
         finally:
-            build.render_remotion = orig
+            build.render_remotion, html_render.available = orig, orig_av
         self.assertTrue(review["duration_ok"], review)
-        self.assertTrue(any("정적 카드" in n for n in review["notes"]))
+        self.assertTrue(any("정적 카드" in n for n in review["notes"]), review["notes"])
+        self.assertEqual(review["motion"].get("card"), 3)
+
+    def test_build_square_with_transitions(self):
+        run = self._make_run("photoreal")
+        plan = plan_schema.auto_plan(SCRIPT, TIMING, "photoreal", "gemini", "1:1", "slide_left")
+        plan["shots"][1]["transition"] = "cut"  # 컷과 전환 섞기
+        (run / "08_shorts" / "plan.json").write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
+        review = build.build(run, {"brand": {}, "bgm": {"enabled": False}})
+        self.assertTrue(review["duration_ok"], review)
+        self.assertEqual(review["aspect"], "1:1")
+        out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+                              "-of", "csv=p=0", str(run / "08_shorts" / "shorts.mp4")], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(out, "1080,1080")
+        self.assertTrue(review["seams_sheet"])
 
 
 class HumanizeGateTest(unittest.TestCase):

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- 수치 비교 막대. props: title, bars[{label, value, unit}] (최대 4개) -->
+<link rel="stylesheet" href="_base.css">
+<style>
+  .wrap { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 0 calc(var(--u) * 9.3); }
+  .title { font-size: calc(var(--u) * 7.4); font-weight: 800; margin-bottom: calc(var(--u) * 5.5); line-height: 1.2; }
+  .row { margin-bottom: calc(var(--u) * 5.4); }
+  .label { font-size: calc(var(--u) * 4.6); color: var(--muted); margin-bottom: calc(var(--u) * 1.3); }
+  .label b { color: var(--text); margin-left: 0.4em; }
+  .track { height: calc(var(--u) * 3.7); }
+  .fill { height: 100%; background: var(--accent); border-radius: calc(var(--u) * 0.75); transform-origin: left center;
+          animation: grow 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: var(--d, 0s); }
+  @keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+</style>
+</head><body>
+<div class="bar"></div>
+<div class="wrap">
+  <div class="title enter">{{title:text=}}</div>
+  <div id="bars"></div>
+</div>
+<script>
+  const bars = (OSMU.props.bars || []).slice(0, 4);
+  const max = Math.max(1, ...bars.map(b => Number(b.value) || 0));
+  const box = document.getElementById("bars");
+  bars.forEach((b, i) => {
+    const d = (0.35 + i * 0.27).toFixed(2) + "s";
+    const row = document.createElement("div");
+    row.className = "row enter";
+    row.style.setProperty("--d", d);
+    row.innerHTML = '<div class="label"><span></span><b></b></div><div class="track"><div class="fill"></div></div>';
+    row.querySelector("span").textContent = String(b.label ?? "");
+    row.querySelector("b").textContent = String(b.value ?? "") + String(b.unit ?? "");
+    const fill = row.querySelector(".fill");
+    fill.style.width = ((Number(b.value) || 0) / max * 100) + "%";
+    fill.style.setProperty("--d", d);
+    box.appendChild(row);
+  });
+</script>
+</body></html>

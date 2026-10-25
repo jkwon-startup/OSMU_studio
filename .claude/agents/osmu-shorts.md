@@ -18,12 +18,14 @@ model: sonnet
 입력: `<run>/08_shorts/script.json`(윤문 반영본), `timing.json`(팀장이 `osmu.py tts` 로 만든 문장별 시작·끝), `topic.json`.
 1. `timing.json` 의 문장 경계에 맞춰 `plan.json` 을 쓴다(Write 허용 범위: `<run>/08_shorts/` 안만).
    - shots[] 는 0초부터 빈틈없이 이어지고 마지막 end == duration_s.
-   - photoreal: source.type 은 `image`(정지+카메라 운동) 또는 `clip`(이미지→영상, Pixverse 일 때 2~3개). motion: source.type `motion` + template/props.
-   - overlays: caption 은 timing 의 문장 그대로, 1줄 12자 이내 2줄까지.
+   - 먼저 `<python> scripts/osmu.py video auto-plan --run <run>` 으로 초안을 만들고 다듬는 것을 권한다(설정의 비율·전환이 들어간다).
+   - photoreal: source.type 은 `image`(정지+카메라 운동) 또는 `clip`(Pixverse 이미지→영상 또는 무료 스톡 영상, 2~3개). scenes[] 에 `prompt` 와 `query`(스톡 검색어)를 함께 둔다. motion: source.type `motion` + template/props — 템플릿은 `templates/motion/*.html` 에 있는 이름(기본: kinetic_full, bullet_card, data_bars, endcard. 설치자가 추가한 것도 쓸 수 있다).
+   - `aspect`·`transition` 은 auto-plan 값을 그대로 둔다(설치자 설정). 특정 샷만 바꾸려면 `shots[].transition`(cut | fade | dissolve | slide_left | slide_up | zoom — 앞 샷에서 넘어오는 방식). 훅→문제처럼 분위기가 바뀌는 곳은 cut 도 좋다.
+   - captions: timing 의 문장 그대로, 1줄 12자 이내 2줄까지. 긴 문장은 auto-plan 이 발화 시점에 맞춰 여러 장으로 나눠 준다.
 2. `<python> scripts/osmu.py video plan-check --run <run>` 으로 스키마 검증. 실패하면 고쳐서 다시.
 3. `<python> scripts/osmu.py video build --run <run>` 실행 → `shorts.mp4`, `frame_sheet.jpg`, `review.json`.
-4. 결과 보고: 길이·음량·freeze 결과(review.json), 실패 시 오류 메시지(키 값 출력 금지). 실패한 장면은 프롬프트를 바꿔 **1회만** 재시도.
+4. 결과 보고: 길이·음량·freeze·첫 프레임·자막 읽기 시간(review.json), 모션 렌더 방식(`motion`), 배경음악 사용 여부(`bgm`), notes(대체된 장면), 실패 시 오류 메시지(키 값 출력 금지). 실패한 장면은 프롬프트·검색어를 바꿔 **1회만** 재시도.
 
 ## 금지
 - `.env` 읽기, `curl`, `rm`, `git`, output 밖 쓰기.
-- 배경음악 추가(저작권). 효과음은 build 가 넣는 전환음만.
+- 배경음악을 직접 고르거나 내려받기(저작권). 배경음악은 build 가 `assets/bgm/`(설치자가 넣은 사용 허락된 음악)에서만 자동으로 깐다.

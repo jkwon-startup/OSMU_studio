@@ -4,6 +4,8 @@ plan.json
 {
   "duration_s": 30,
   "style": "photoreal" | "motion",
+  "aspect": "9:16" | "1:1" | "16:9",               (선택, 기본 9:16)
+  "transition": "fade",                             (선택. 샷마다 shots[].transition 으로 덮어쓰기 = 앞 샷에서 넘어오는 방식)
   "thumbnail_text": "…",
   "shots": [
     {"id": "s1", "start": 0.0, "end": 3.0, "source": {"type": "image", "file": "scenes/hook.jpg", "motion": "push_in"}},
@@ -23,8 +25,15 @@ from pathlib import Path
 
 SOURCE_TYPES = {"image", "clip", "motion", "endcard"}
 MOTIONS = {"push_in", "push_out", "pan_left", "pan_right", "static"}
-TEMPLATES = {"kinetic_full", "bullet_card", "data_bars", "endcard"}
+ASPECTS = {"9:16": (1080, 1920), "1:1": (1080, 1080), "16:9": (1920, 1080)}
+TRANSITIONS = {"cut", "fade", "dissolve", "slide_left", "slide_up", "zoom"}
 TOLERANCE = 0.05
+
+
+def templates() -> set[str]:
+    """templates/motion/*.html 에 있는 모션 템플릿 이름 (설치자가 추가한 것 포함)."""
+    from video.html_render import list_templates
+    return set(list_templates()) | {"kinetic_full", "bullet_card", "data_bars", "endcard"}
 
 
 def validate(plan: dict) -> list[str]:
@@ -32,6 +41,11 @@ def validate(plan: dict) -> list[str]:
     dur = float(plan.get("duration_s", 0))
     if not 5 <= dur <= 90:
         errs.append(f"duration_s {dur} 범위 밖(5~90)")
+    if plan.get("aspect", "9:16") not in ASPECTS:
+        errs.append(f"aspect {plan.get('aspect')!r} ({' | '.join(ASPECTS)})")
+    if plan.get("transition", "cut") not in TRANSITIONS:
+        errs.append(f"transition {plan.get('transition')!r} ({' | '.join(sorted(TRANSITIONS))})")
+    tpls = templates()
     shots = plan.get("shots") or []
     if not shots:
         errs.append("shots 비어 있음")
@@ -52,8 +66,10 @@ def validate(plan: dict) -> list[str]:
             errs.append(f"shot {i}: source.file 없음")
         if ty == "image" and src.get("motion", "push_in") not in MOTIONS:
             errs.append(f"shot {i}: motion {src.get('motion')!r}")
-        if ty == "motion" and src.get("template") not in TEMPLATES:
-            errs.append(f"shot {i}: template {src.get('template')!r}")
+        if ty == "motion" and src.get("template") not in tpls:
+            errs.append(f"shot {i}: template {src.get('template')!r} (있는 것: {', '.join(sorted(tpls))})")
+        if s.get("transition", "cut") not in TRANSITIONS:
+            errs.append(f"shot {i}: transition {s.get('transition')!r}")
         t = en
     if shots and abs(t - dur) > TOLERANCE:
         errs.append(f"마지막 end {t:.2f} ≠ duration_s {dur}")
@@ -77,21 +93,18 @@ def validate_file(path: Path) -> list[str]:
 
 
 def captions_from_timing(timing: dict, max_chars: int = 12) -> list[dict]:
-    """timing.json 의 문장을 자막으로 — 긴 문장은 2줄로 나눈다. 수치가 들어간 토큰을 강조."""
-    import re
+    """timing.json 의 문장을 자막으로 — 한 줄 max_chars 자, 2줄씩. 더 긴 문장은 여러 장으로 나누고
+    단어 타이밍(edge-tts)이 있으면 발화 시점에, 없으면 글자 수 비율로 맞춘다. 수치가 들어간 토큰을 강조."""
+    from video.align import chunk_captions
     caps = []
     for u in timing["units"]:
-        text = u["text"].strip()
-        if len(text) > max_chars:
-            cut = text.rfind(" ", 0, max_chars + 1)
-            cut = cut if cut > 0 else max_chars
-            text = text[:cut].strip() + "\n" + text[cut:].strip()
-        m = re.search(r"\d[\d,.]*\s*[가-힣%]{0,2}", text)
-        caps.append({"text": text, "start": u["start"], "end": u["end"], "highlight": m.group(0).strip() if m else None, "beat": u["beat"]})
+        for c in chunk_captions(u["text"].strip(), u.get("words") or [], float(u["start"]), float(u["end"]), max_chars):
+            m = re.search(r"\d[\d,.]*\s*[가-힣%]{0,2}", c["text"])
+            caps.append({**c, "highlight": m.group(0).strip() if m else None, "beat": u["beat"]})
     return caps
 
 
-def auto_plan(script: dict, timing: dict, style: str, provider: str) -> dict:
+def auto_plan(script: dict, timing: dict, style: str, provider: str, aspect: str = "9:16", transition: str = "fade") -> dict:
     """대본 beats 와 타이밍으로 기본 plan 을 자동 생성한다 (PD 가 다듬기 전 초안, 또는 무인 폴백)."""
     beats = {b["id"]: b for b in script["beats"]}
     order = [b["id"] for b in script["beats"]]
@@ -133,5 +146,6 @@ def auto_plan(script: dict, timing: dict, style: str, provider: str) -> dict:
     if style == "motion":
         text_shots = [(s["start"], s["end"]) for s in shots if s["source"]["type"] in ("endcard",) or s["source"].get("template") == "kinetic_full"]
         captions = [c for c in captions if not any(st <= c["start"] < en for st, en in text_shots)]
-    return {"duration_s": total, "style": style, "thumbnail_text": script.get("thumbnail_text", ""),
-            "shots": shots, "captions": captions, "scenes": scenes}
+    return {"duration_s": total, "style": style, "aspect": aspect if aspect in ASPECTS else "9:16",
+            "transition": transition if transition in TRANSITIONS else "fade",
+            "thumbnail_text": script.get("thumbnail_text", ""), "shots": shots, "captions": captions, "scenes": scenes}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- 제목 + 핵심 3개. props: title, items(최대 3개, 항목당 10자 이내 권장) -->
+<link rel="stylesheet" href="_base.css">
+<style>
+  .wrap { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 0 calc(var(--u) * 9.3); }
+  .title { font-size: calc(var(--u) * 7.8); font-weight: 800; line-height: 1.2; }
+  .items { margin-top: calc(var(--u) * 6.5); display: flex; flex-direction: column; gap: calc(var(--u) * 4); }
+  .item { display: flex; gap: calc(var(--u) * 2.6); align-items: flex-start; font-size: calc(var(--u) * 5.4); line-height: 1.35; }
+  .dot { width: calc(var(--u) * 2.8); height: calc(var(--u) * 2.8); border-radius: 50%; background: var(--accent); margin-top: calc(var(--u) * 1.6); flex-shrink: 0; }
+</style>
+</head><body>
+<div class="bar"></div>
+<div class="wrap">
+  <div class="title enter">{{title:text=}}</div>
+  <div class="items" id="items"></div>
+</div>
+<script>
+  const box = document.getElementById("items");
+  (OSMU.props.items || []).slice(0, 3).forEach((it, i) => {
+    const row = document.createElement("div");
+    row.className = "item enter";
+    row.style.setProperty("--d", (0.4 + i * 0.33).toFixed(2) + "s");
+    row.innerHTML = '<div class="dot"></div><div></div>';
+    row.lastChild.textContent = String(it);
+    box.appendChild(row);
+  });
+</script>
+</body></html>

@@ -20,6 +20,13 @@ FONT_DIR = ROOT / "assets" / "fonts"
 def find_font(bold: bool = True) -> Path | None:
     if not FONT_DIR.exists():
         return None
+    try:  # 브랜드 토큰(config/frame.local.md)에 지정한 글꼴이 있으면 우선
+        from video.frame_tokens import load_frame_tokens
+        name = load_frame_tokens().get("font", {}).get("bold" if bold else "regular")
+        if name and (FONT_DIR / name).exists():
+            return FONT_DIR / name
+    except Exception:
+        pass
     files = sorted(FONT_DIR.glob("*.[ot]tf"))
     if not files:
         return None
@@ -73,7 +80,7 @@ def compose(bg: Path, text: str, out: Path, position: str = "top", size: tuple[i
 
 
 def render_text_png(text: str, width: int, out: Path, font_px: int = 64, highlight: str | None = None,
-                    color=(255, 255, 255), stroke=(0, 0, 0)) -> Path:
+                    color=(255, 255, 255), stroke=(0, 0, 0), highlight_color=(255, 214, 10)) -> Path:
     """숏츠 자막용 투명 PNG (drawtext 필터 없이 FFmpeg overlay 로 얹는다)."""
     from PIL import Image, ImageDraw, ImageFont
     font_path = find_font(bold=True)
@@ -93,7 +100,7 @@ def render_text_png(text: str, width: int, out: Path, font_px: int = 64, highlig
         if highlight and highlight in ln:
             pre = ln[:ln.index(highlight)]
             hx = x + draw.textlength(pre, font=font)
-            draw.text((hx, y), highlight, font=font, fill=(255, 214, 10, 255), stroke_width=max(2, font_px // 14), stroke_fill=stroke + (255,))
+            draw.text((hx, y), highlight, font=font, fill=tuple(highlight_color) + (255,), stroke_width=max(2, font_px // 14), stroke_fill=stroke + (255,))
         y += line_h
     out.parent.mkdir(parents=True, exist_ok=True)
     im.save(out, "PNG")

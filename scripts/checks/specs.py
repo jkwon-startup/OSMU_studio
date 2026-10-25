@@ -158,7 +158,8 @@ def check_images(run: Path, r: Report) -> None:
         if not p.exists():
             p = d / f"blog_{i}.png"
         if not p.exists():
-            r.add("images", f"blog_{i}_exists", False, "없음")
+            r.add("images", f"blog_{i}_exists", False, "없음 — images/image_results.json 의 오류를 확인하세요"
+                  " (무료 스톡이면 .env 에 PEXELS_API_KEY 가 있는지)")
             continue
         s = _img_size(p)
         ok = s is not None and s[0] > s[1] and abs(s[0] / s[1] - 16 / 9) < 0.08
@@ -205,6 +206,13 @@ def check_shorts(run: Path, r: Report) -> None:
             d = json.loads(rev.read_text(encoding="utf-8"))
             r.add("shorts", "loudness", d.get("loudness_ok", False), f"LUFS {d.get('lufs')}", "warn")
             r.add("shorts", "no_freeze", d.get("freeze_ok", True), f"freeze {d.get('freeze_s', 0)}s", "warn")
+            r.add("shorts", "first_frame", d.get("first_frame_ok", True), f"첫 프레임 대비 {d.get('first_frame_contrast')}"
+                  " (낮으면 썸네일이 빈 화면)", "warn")
+            fast = d.get("captions_fast") or []
+            r.add("shorts", "caption_reading_time", not fast,
+                  "모든 자막 읽을 시간 충분" if not fast else f"{len(fast)}개 너무 빨리 지나감: " + ", ".join(c["text"].replace("\n", " ") for c in fast[:3]), "warn")
+            r.add("shorts", "narration", not d.get("silent_narration"), "음성 있음" if not d.get("silent_narration")
+                  else "음성 없음(자막만) — 08_shorts/timing.json 의 fallback 이유 확인", "warn")
         except json.JSONDecodeError:
             pass
 
