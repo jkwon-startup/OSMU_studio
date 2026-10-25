@@ -13,6 +13,10 @@ body {
 }
 /* 다음 샷과 컷으로 이어질 때만 렌더러가 붙인다 — 끝에서 내용이 배경색으로 사라짐 */
 body.fade-out { animation: osmu-out 0.27s linear both; animation-delay: calc(var(--dur) - 0.27s); }
+/* 장면 내내 아주 느리게 다가오는 움직임 — 등장 효과가 끝난 뒤에도 화면이 '멈춘 것'처럼 보이지 않게 */
+.wrap { animation: osmu-drift var(--dur) linear both; }
+@keyframes osmu-drift { from { transform: scale(1); } to { transform: scale(1.04); } }
+
 .bar { position: absolute; top: 0; left: 0; right: 0; height: calc(var(--u) * 1.7); background: var(--accent); }
 .accent { color: var(--accent); }
 .muted { color: var(--muted); }

@@ -213,3 +213,18 @@ OSMU_studio/
 | 7 | 네이버 모바일 페이지 WebFetch 가능 여부 | 미확인 — 3단계 리서처 테스트에서 확인 |
 
 0단계 실측 비용: 프로브 1회 약 $1.5(12턴). 하루 실행 비용 추정에 반영한다.
+
+## 14. 공개판 업그레이드 (2026-10-25) — 오픈소스 3종 벤치마킹
+
+배경: 공개 저장소를 받은 사람이 유료 키 2~3개가 있어야 숏츠까지 완성되고, 음성이 실패하면 영상이 아예 안 나오며, 모션그래픽이 Remotion(4인 이상 조직 유료)에 묶여 있었다. MoneyPrinterTurbo(MIT)·Pixelle-Video(Apache-2.0)·HyperFrames(Apache-2.0)를 분석해 **설치 사용자 입장에서** 빈칸만 골라 OSMU 구조로 새로 구현했다(코드 복사 없음, NOTICE.md 에 출처).
+
+| 묶음 | 내용 | 주요 파일 |
+|---|---|---|
+| A 무료로 시작 | edge-tts 무료 음성 기본값 + 공급자 실패 시 edge → 무음 폴백(단어 타이밍 기록), Pexels/Pixabay 스톡 사진·영상(`image_provider: stock`, 생성 실패 시 스톡 대체, credits.json), 설정 deep merge·잘못된 선택지 기본값 복귀, `config-show`, 로그·알림 키 가림 | `scripts/video/tts.py`, `scripts/image/stock.py`, `scripts/common.py` |
+| B 영상 품질 | 배경음악(assets/bgm, 덕킹·페이드), xfade 장면 전환(길이·자막 타이밍 유지), 9:16·1:1·16:9, 한글 안전 자막 정렬(표시 '3가지' ↔ 발화 '세 가지', 긴 문장 분할), 인코더 자동 선택 | `scripts/video/build.py`, `align.py`, `ff.py` |
+| C HTML 모션 | `templates/motion/*.html` + Playwright 결정적 렌더(프레임마다 애니메이션 시점 고정, 정지 구간 프레임 재사용), `{{이름:타입=기본값}}` 자리표시자, Remotion 은 선택·Pillow 카드 폴백, `motion-preview` | `scripts/video/html_render.py`, `templates/motion/` |
+| D 배포·검수 | 설치 도우미 플러그인(`/osmu-studio:install`), Docker(+CI 빌드), `pyproject.toml`+`uv.lock`, 사전 점검(비용 쓰기 전 중단)·실패 단계 기록, doctor 업데이트 알림, 브랜드 토큰 `config/frame.local.md`(`frame-write`), 검수 강화(첫 프레임·자막 읽기 시간·장면 경계 시트·폰 크기 시트·P0/P1/P2), 영문 README·문제 해결 문서 | `.claude-plugin/`, `plugin/`, `Dockerfile`, `scripts/run/daily.py`, `docs/TROUBLESHOOTING.md` |
+
+이번에 하지 않은 것(후보): 웹 UI·API 서버(Claude Code 중심 설계와 맞지 않음), HyperFrames 엔진 자체 도입(Node 22·Chrome·HeyGen 연동 정리 필요), 자동 게시, 한 실행에서 숏츠 변형 N개 생성(훅 A/B), 변경된 장면만 다시 렌더(입력 해시), Whisper 기반 단어 타이밍(유료 음성 공급자용).
+
+검증: 단위 테스트(무료 경로·폴백·설정·키 가림·자막 정렬·템플릿·배경음악·브랜드 토큰·1:1+전환 합성), 무료 경로 E2E(edge 음성 + HTML 모션 + 전환 + 배경음악 숏츠 합성), plugin validate, uv sync --frozen. Docker 는 로컬에 Docker 가 없어 CI(`docker` 잡)로 확인.

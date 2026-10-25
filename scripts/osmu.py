@@ -95,7 +95,8 @@ def cmd_produce(a):
     run_dir = Path(a.run)
     settings = daily.write_unattended_settings(cfg)
     rel = run_dir.resolve().relative_to(Path.cwd().resolve()).as_posix() if run_dir.is_absolute() else run_dir.as_posix()
-    call = ClaudeCall(prompt=f"/osmu-run run={rel} scope={a.scope}", settings=settings,
+    py = Path(daily.resolve_python(cfg)).as_posix()
+    call = ClaudeCall(prompt=f"/osmu-run run={rel} scope={a.scope} python={py}", settings=settings,
                       disallowed_tools=["WebSearch", "WebFetch"], max_budget_usd=float(cfg.get("max_budget_usd", 15)))
     print("제작 세션 시작 (최대 2시간) …")
     res = run_claude(call, find_claude(cfg.get("claude_path")), daily.PRODUCE_TIMEOUT_S, run_dir / "produce_manual.log")
@@ -234,6 +235,35 @@ def cmd_config_write(a):
     return 0
 
 
+def cmd_frame_write(a):
+    """브랜드 토큰 저장 (stdin JSON {"colors": {...}, "caption": {...}}) → config/frame.local.md. 잘못된 색은 거부."""
+    import re
+    from video.frame_tokens import CONFIG_DIR as FDIR, parse_frontmatter
+    try:
+        data = json.loads(sys.stdin.read())
+    except json.JSONDecodeError as e:
+        print(f"거부: JSON 형식 오류 — {e}")
+        return 1
+    base_file = FDIR / "frame.local.md" if (FDIR / "frame.local.md").exists() else FDIR / "frame.example.md"
+    cur = parse_frontmatter(base_file.read_text(encoding="utf-8")) if base_file.exists() else {}
+    for sec in ("colors", "caption", "font"):
+        for k, v in (data.get(sec) or {}).items():
+            v = str(v).strip()
+            if sec != "font" and k != "size" and not re.fullmatch(r"#[0-9A-Fa-f]{6}|#[0-9A-Fa-f]{3}", v):
+                print(f"거부: {sec}.{k}='{v}' — 색은 #RRGGBB 형식")
+                return 1
+            cur.setdefault(sec, {})[k] = v
+    lines = ["---", "# 브랜드 토큰 — osmu.py frame-write 로 저장됨. 직접 고쳐도 됩니다 (설명: config/frame.example.md)"]
+    for sec in ("colors", "caption", "font"):
+        if cur.get(sec):
+            lines.append(f"{sec}:")
+            lines += [f'  {k}: "{v}"' if str(v).startswith("#") else f"  {k}: {v}" for k, v in cur[sec].items()]
+    lines += ["---", ""]
+    (FDIR / "frame.local.md").write_text("\n".join(lines), encoding="utf-8")
+    print(f"config/frame.local.md 저장: " + ", ".join(f"{s}.{k}" for s in ("colors", "caption", "font") for k in (data.get(s) or {})))
+    return 0
+
+
 def cmd_config_show(_):
     """실제로 적용되는 설정(기본값 + 내 설정)을 보여준다. 팀장 세션도 이것으로 설정을 읽는다."""
     cfg = {k: v for k, v in load_config().items() if not k.startswith("_comment")}
@@ -286,6 +316,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("schedule"); p.add_argument("action", choices=["install", "uninstall", "status", "run-now", "render"]); p.add_argument("--label"); p.add_argument("--out"); p.add_argument("--windows", action="store_true"); p.set_defaults(fn=cmd_schedule)
     p = sub.add_parser("config-write"); p.set_defaults(fn=cmd_config_write)
     sub.add_parser("config-show").set_defaults(fn=cmd_config_show)
+    sub.add_parser("frame-write").set_defaults(fn=cmd_frame_write)
     p = sub.add_parser("motion-preview"); p.add_argument("template"); p.add_argument("--props"); p.add_argument("--seconds", default="3")
     p.add_argument("--aspect", default="9:16", choices=["9:16", "1:1", "16:9"]); p.set_defaults(fn=cmd_motion_preview)
     p = sub.add_parser("check"); p.add_argument("run_dir"); p.add_argument("--only"); p.set_defaults(fn=cmd_check)

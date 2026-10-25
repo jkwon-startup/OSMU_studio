@@ -128,9 +128,16 @@ def run_research(topic: dict, run_dir: Path, cfg: dict, claude_path: str) -> dic
     return results
 
 
+def resolve_python(cfg: dict) -> str:
+    """설정의 python_path 가 실제로 있으면 그것, 없으면(폴더 이동·Docker) 지금 실행 중인 파이썬.
+    심링크를 풀지 않은 경로여야 실제 명령줄과 권한 규칙 문자열이 일치한다."""
+    py = cfg.get("python_path")
+    return py if py and Path(py).exists() else sys.executable
+
+
 def write_unattended_settings(cfg: dict) -> Path:
     tpl = (ROOT / "config" / "unattended.template.json").read_text(encoding="utf-8")
-    py = cfg.get("python_path") or sys.executable  # 심링크를 풀지 않은 경로여야 실제 명령줄과 문자열이 일치한다
+    py = resolve_python(cfg)
     hroot = cfg.get("humanize_root") or "/nonexistent-humanize"
     # 경로 규칙은 "//" + 절대경로. POSIX 절대경로는 앞의 "/" 를 떼고 붙인다 ("//Users/…"), Windows 는 "//C:/…".
     strip = lambda p: Path(p).as_posix().lstrip("/")  # noqa: E731
@@ -146,11 +153,35 @@ def write_unattended_settings(cfg: dict) -> Path:
 def run_produce(run_dir: Path, cfg: dict, claude_path: str, attempt: int) -> dict | None:
     settings = write_unattended_settings(cfg)
     rel = run_dir.relative_to(ROOT).as_posix()
-    call = ClaudeCall(prompt=f"/osmu-run run={rel}", settings=settings,
+    call = ClaudeCall(prompt=f"/osmu-run run={rel} python={Path(resolve_python(cfg)).as_posix()}", settings=settings,
                       disallowed_tools=["WebSearch", "WebFetch"],
                       max_budget_usd=float(cfg.get("max_budget_usd", 15)))
     res = run_claude(call, claude_path, PRODUCE_TIMEOUT_S, run_dir / f"produce_attempt{attempt}.log")
     return res.json() if res.ok else None
+
+
+# ---------- 사전 점검 (돈·시간을 쓰기 전에) ----------
+def preflight(cfg: dict) -> list[str]:
+    """무인 실행 전에 꼭 필요한 것만 빠르게 확인한다. 문제마다 '무엇을 하면 되는지' 한 줄."""
+    import shutil
+    problems = []
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        problems.append("FFmpeg 없음 → macOS: brew install ffmpeg / Windows: winget install Gyan.FFmpeg")
+    fonts = ROOT / "assets" / "fonts"
+    if not (fonts.exists() and any(fonts.glob("*.?tf"))):
+        problems.append("assets/fonts 에 글꼴 없음 → 저장소를 다시 받거나 git pull")
+    try:
+        import PIL  # noqa: F401
+    except ImportError:
+        problems.append("Pillow 없음 → .venv 안에서 pip install -r requirements.txt")
+    try:
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        (OUTPUT_DIR / ".write_test").write_text("ok", encoding="utf-8")
+    except OSError as e:
+        problems.append(f"output 폴더에 쓸 수 없음({type(e).__name__}) → 폴더 권한·디스크 공간 확인")
+    if shutil.disk_usage(ROOT).free < 1_000_000_000:
+        problems.append("디스크 여유 공간 1GB 미만 → output/runs 의 오래된 폴더를 정리하세요")
+    return problems
 
 
 # ---------- 알림 ----------
@@ -213,11 +244,22 @@ def main(argv=None) -> int:
     t0 = time.time()
     run_dir = OUTPUT_DIR / "runs" / date_str
     topic = None
+    stage = "사전 점검"
     try:
         claude_path = find_claude(cfg.get("claude_path"))
         if not claude_path:
-            send_notification(cfg, f"[OSMU] {date_str} 실패: claude 실행 파일을 찾을 수 없음")
+            set_run_state(date_str, "error", stage=stage, error="claude 실행 파일 없음")
+            send_notification(cfg, f"[OSMU] {date_str} 실패(사전 점검): claude 실행 파일을 찾을 수 없음 — "
+                                   "Claude Code 설치 확인 후 /osmu-setup 으로 claude_path 를 다시 저장하세요")
             return 1
+        problems = preflight(cfg)
+        if problems:
+            set_run_state(date_str, "error", stage=stage, error=" / ".join(problems)[:300])
+            send_notification(cfg, f"[OSMU] {date_str} 시작 전 점검 실패 — 비용은 쓰지 않았습니다 | " + " | ".join(problems))
+            print("사전 점검 실패:\n  " + "\n  ".join(problems))
+            return 1
+
+        stage = "주제 선택"
 
         from topics import select
         topic = read_json(run_dir / "topic.json") if (run_dir / "topic.json").exists() else select.select_topic(cfg)
@@ -234,15 +276,18 @@ def main(argv=None) -> int:
             return 0
 
         set_run_state(date_str, "running", topic=topic["title"])
+        stage = "조사"
         if not (a.skip_research and (run_dir / "01_research").exists()):
             r = run_research(topic, run_dir, cfg, claude_path)
             print("조사:", r)
 
+        stage = "제작"
         result = run_produce(run_dir, cfg, claude_path, 1)
         if result is None or (result.get("is_error") and not (run_dir / "summary.json").exists()):
             print("제작 세션 실패 — 1회 재시도")
             result = run_produce(run_dir, cfg, claude_path, 2)
 
+        stage = "알림"
         cost = (result or {}).get("total_cost_usd")
         summary = read_json(run_dir / "summary.json", {}) or {}
         status = summary.get("status", "실패")
@@ -255,8 +300,9 @@ def main(argv=None) -> int:
         set_run_state(date_str, "done" if status == "완료" else ("partial" if blog_done else "failed"), cost=cost)
         return 0 if blog_done else 1
     except Exception as e:  # 어떤 예외든 알림은 보낸다
-        set_run_state(date_str, "error", error=redact(f"{type(e).__name__}: {e}")[:300])
-        send_notification(cfg, f"[OSMU] {date_str} 오류: {type(e).__name__}: {str(e)[:200]}")
+        set_run_state(date_str, "error", stage=stage, error=redact(f"{type(e).__name__}: {e}")[:300])
+        send_notification(cfg, f"[OSMU] {date_str} 오류(단계: {stage}): {type(e).__name__}: {str(e)[:200]} | "
+                               f"폴더: {run_dir} · 점검: osmu.py doctor")
         raise
     finally:
         lock.release()

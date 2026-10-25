@@ -1,0 +1,17 @@
+# 헤드리스 서버에서 OSMU Studio 실행. 먼저 저장소 폴더에서 .env 와 config/config.local.json 을 준비하세요
+# (가장 쉬운 방법: 데스크톱에서 /osmu-setup 을 한 번 끝낸 뒤 config/ 와 .env 를 서버로 복사).
+#
+# 매일 실행은 서버의 cron 에 등록합니다(한국시간 07:00 예):
+#   0 7 * * * cd /path/to/OSMU_studio && docker compose run --rm --entrypoint python osmu scripts/run/daily.py --now
+services:
+  osmu:
+    build: .
+    image: osmu-studio:local
+    env_file: .env            # 컨테이너 안 Claude Code 인증(ANTHROPIC_API_KEY 또는 CLAUDE_CODE_OAUTH_TOKEN)에 필요
+    volumes:
+      - ./.env:/app/.env:ro   # 스크립트가 키를 읽는 곳 (읽기 전용)
+      - ./config:/app/config  # 내 설정·브랜드 토큰·주제 CSV
+      - ./output:/app/output  # 결과물
+      - ./assets/bgm:/app/assets/bgm:ro   # 내 배경음악 (선택)
+    # 주제 소스가 폴더(옵시디언 등)면 여기에 연결하고 config 의 topics.path 를 /topics 로:
+    #   - /home/me/notes/topics:/topics:ro

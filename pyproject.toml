@@ -1,0 +1,17 @@
+[project]
+name = "osmu-studio"
+version = "1.1.0"
+description = "주제 하나를 블로그·이미지·인스타·쓰레드·숏츠로 매일 자동 제작하는 Claude Code 콘텐츠 팀"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+# requirements.txt 와 같은 목록 — pip 사용자는 requirements.txt, uv 사용자는 `uv sync`(uv.lock 의 고정 버전)
+dependencies = [
+    "pillow>=10.0",
+    "openpyxl>=3.1",
+    "edge-tts>=7.0",
+    "playwright>=1.45",
+]
+
+[tool.uv]
+package = false

@@ -104,6 +104,15 @@ def captions_from_timing(timing: dict, max_chars: int = 12) -> list[dict]:
     return caps
 
 
+def _clip(text: str, n: int) -> str:
+    """카드 글자 수 제한 — 어절 중간에서 자르지 않는다."""
+    text = text.strip()
+    if len(text) <= n:
+        return text
+    cut = text.rfind(" ", 0, n + 1)
+    return text[:cut if cut > n // 2 else n].rstrip(" ,")
+
+
 def auto_plan(script: dict, timing: dict, style: str, provider: str, aspect: str = "9:16", transition: str = "fade") -> dict:
     """대본 beats 와 타이밍으로 기본 plan 을 자동 생성한다 (PD 가 다듬기 전 초안, 또는 무인 폴백)."""
     beats = {b["id"]: b for b in script["beats"]}
@@ -130,7 +139,8 @@ def auto_plan(script: dict, timing: dict, style: str, provider: str, aspect: str
         if style == "motion":
             sents = [s.strip() for s in re.split(r"(?<=[.?!…])\s+", b["narration"].strip()) if s.strip()]
             tpl = "kinetic_full" if (i == 0 or len(sents) < 2) else "bullet_card"
-            props = {"text": sents[0][:26]} if tpl == "kinetic_full" else {"title": sents[0][:26], "items": [s.rstrip(".") for s in sents[1:4]]}
+            props = {"text": _clip(sents[0], 26)} if tpl == "kinetic_full" else \
+                {"title": _clip(sents[0], 26), "items": [_clip(s.rstrip("."), 20) for s in sents[1:4]]}
             shots.append({"id": bid, "start": round(start, 2), "end": round(end, 2), "source": {"type": "motion", "template": tpl, "props": props}})
         else:
             use_clip = clip_quota > 0 and (end - start) >= 4 and i > 0
@@ -144,8 +154,10 @@ def auto_plan(script: dict, timing: dict, style: str, provider: str, aspect: str
         shots[-1]["end"] = total
     captions = captions_from_timing(timing)
     if style == "motion":
-        text_shots = [(s["start"], s["end"]) for s in shots if s["source"]["type"] in ("endcard",) or s["source"].get("template") == "kinetic_full"]
-        captions = [c for c in captions if not any(st <= c["start"] < en for st, en in text_shots)]
+        # 화면에 이미 같은 문장이 크게 나오는 샷(큰 글자·핵심 카드·엔드카드)에는 자막을 겹쳐 쓰지 않는다
+        text_shots = [(s["start"], s["end"]) for s in shots
+                      if s["source"]["type"] == "endcard" or s["source"].get("template") in ("kinetic_full", "bullet_card")]
+        captions = [c for c in captions if not any(st - 0.05 <= c["start"] < en - 0.05 for st, en in text_shots)]
     return {"duration_s": total, "style": style, "aspect": aspect if aspect in ASPECTS else "9:16",
             "transition": transition if transition in TRANSITIONS else "fade",
             "thumbnail_text": script.get("thumbnail_text", ""), "shots": shots, "captions": captions, "scenes": scenes}

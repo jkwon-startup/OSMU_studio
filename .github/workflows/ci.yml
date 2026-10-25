@@ -40,3 +40,19 @@ jobs:
         run: python scripts/osmu.py selftest --only ffmpeg_compose
       - name: Schedule file render
         run: python scripts/osmu.py schedule render --out output/schedule-render.txt
+      - name: Free path smoke (무료 음성 — 네트워크 문제는 경고만)
+        run: python scripts/osmu.py selftest --only edge_tts
+        continue-on-error: true
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t osmu-studio:ci .
+      - name: Doctor in container (claude 인증 없음 — 도구 설치만 확인)
+        run: docker run --rm osmu-studio:ci doctor
+      - name: FFmpeg + HTML motion in container
+        run: |
+          docker run --rm osmu-studio:ci selftest --only ffmpeg_compose
+          docker run --rm --entrypoint python osmu-studio:ci -m unittest discover -s tests

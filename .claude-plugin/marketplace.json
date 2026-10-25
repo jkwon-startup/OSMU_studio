@@ -1,0 +1,17 @@
+{
+  "name": "osmu-studio",
+  "owner": {
+    "name": "jkwon-startup",
+    "url": "https://github.com/jkwon-startup/OSMU_studio"
+  },
+  "description": "OSMU Studio — 주제 하나로 블로그·이미지·인스타·쓰레드·숏츠를 매일 자동 제작하는 Claude Code 콘텐츠 팀. 이 플러그인은 설치 도우미입니다.",
+  "plugins": [
+    {
+      "name": "osmu-studio",
+      "source": "./plugin",
+      "description": "/osmu-studio:install — 저장소 내려받기·파이썬 환경·도구 점검까지 한 번에. 끝나면 그 폴더에서 /osmu-setup 을 안내합니다.",
+      "homepage": "https://github.com/jkwon-startup/OSMU_studio",
+      "license": "MIT"
+    }
+  ]
+}

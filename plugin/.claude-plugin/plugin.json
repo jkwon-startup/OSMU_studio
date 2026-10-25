@@ -1,0 +1,12 @@
+{
+  "name": "osmu-studio",
+  "description": "OSMU Studio 설치 도우미 — 저장소 내려받기, 파이썬 환경, 필수 도구 점검을 대신 해 주고 /osmu-setup 으로 이어 줍니다.",
+  "version": "1.1.0",
+  "author": {
+    "name": "jkwon-startup",
+    "url": "https://github.com/jkwon-startup"
+  },
+  "homepage": "https://github.com/jkwon-startup/OSMU_studio",
+  "repository": "https://github.com/jkwon-startup/OSMU_studio",
+  "license": "MIT"
+}

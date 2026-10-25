@@ -1,0 +1,15 @@
+# 비밀값·개인 설정·산출물은 이미지에 넣지 않는다 (docker-compose 가 볼륨으로 연결)
+.env
+.env.*
+!.env.example
+config/*.local.*
+config/references/
+output/
+_workspace/
+logs/
+.venv/
+**/__pycache__/
+motion/node_modules/
+motion/out/
+.git/
+.DS_Store
