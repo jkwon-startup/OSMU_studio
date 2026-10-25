@@ -40,6 +40,10 @@ def template_params(name: str) -> list[dict]:
         if m.group(1) not in seen:
             seen.add(m.group(1))
             out.append({"name": m.group(1), "type": m.group(2) or "text", "default": (m.group(3) or "").strip()})
+    for name in re.findall(r"OSMU\.props\.(\w+)", text):  # 스크립트에서 읽는 목록·복합 값
+        if name not in seen:
+            seen.add(name)
+            out.append({"name": name, "type": "data", "default": ""})
     return out
 
 
