@@ -19,16 +19,120 @@
 | FFmpeg | macOS `brew install ffmpeg` / Windows `winget install Gyan.FFmpeg` |
 | git | Windows는 Git for Windows(Bash 도구에 필요) |
 
-| 선택 | 무료? | 용도 |
+| 선택 프로그램 | 언제 |
+|---|---|
+| Node.js 18+ | Remotion 엔진(선택)·Pixverse CLI 를 쓸 때만 |
+| 배경음악 파일 | `assets/bgm/` 에 사용 허락된 mp3 를 넣으면 숏츠에 작게 깔림 |
+
+## 가입·API 키 안내
+
+### 어디에 가입해야 하나 (한눈에)
+
+| 서비스 | 꼭 필요? | 비용 | 가입·키 받는 곳 | `.env` 에 넣을 이름 | 쓰는 곳 |
+|---|---|---|---|---|---|
+| **Claude** (Anthropic) | **필수** | Pro·Max 구독 또는 API 사용량 | [claude.ai](https://claude.ai) 구독 후 Claude Code 로그인 | (없음 — 로그인으로 인증) | 모든 글쓰기·조사·검수 |
+| **Pexels** | **추천** (무료 경로) | 무료 | [pexels.com/api](https://www.pexels.com/api/) | `PEXELS_API_KEY` | 블로그 사진·인스타 배경·숏츠 장면/영상 |
+| Pixabay | 선택 | 무료 | [pixabay.com/api/docs](https://pixabay.com/api/docs/) | `PIXABAY_API_KEY` | Pexels 에서 못 찾을 때 이어서 검색 |
+| Slack | 알림 둘 중 하나 | 무료 | [api.slack.com/apps](https://api.slack.com/apps) | `SLACK_WEBHOOK_URL` | 완료·실패 알림 |
+| 텔레그램 | 알림 둘 중 하나 | 무료 | 텔레그램 앱에서 [@BotFather](https://t.me/BotFather) | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | 완료·실패 알림 |
+| Gemini (Google) | 선택 (고품질) | 유료 | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | `GEMINI_API_KEY` | AI 이미지, 음성 |
+| ElevenLabs | 선택 (고품질) | 유료 | [elevenlabs.io](https://elevenlabs.io) | `ELEVENLABS_API_KEY` | 고품질 음성 |
+| Pixverse | 선택 (고품질) | 유료 구독 | [pixverse.ai](https://pixverse.ai) | (없음 — `pixverse auth login`) | AI 이미지, 이미지→영상 클립, 음성 |
+
+**가입이 필요 없는 것**: 숏츠 음성(Microsoft Edge 무료 음성), GitHub(공개 저장소라 계정 없이 내려받기 가능), 폰트(저장소에 동봉).
+
+### 어떻게 조합하나
+
+| 조합 | 가입할 곳 | 결과 |
 |---|---|---|
-| Pexels(또는 Pixabay) API 키 | **무료** | 블로그 사진·인스타 배경·숏츠 장면/영상 (무료 스톡) |
-| — | **무료, 키 없음** | 숏츠 음성 (Microsoft Edge 음성) |
-| Gemini API 키 / Pixverse 구독 | 유료 | AI 이미지·이미지→영상 클립 (고품질을 원할 때) |
-| ElevenLabs 키 / Gemini 키 | 유료 | 고품질 음성 |
-| Slack Incoming Webhook / 텔레그램 봇 | 무료 | 완료 알림 |
-| YouTube Data API 키 | 무료 | 유튜브 리서치를 조회수 기준으로 (없으면 웹 검색) |
-| 배경음악 파일 | 직접 준비 | `assets/bgm/` 에 넣으면 숏츠에 자동으로 작게 깔림 |
-| Node.js 18+ | 무료 | Remotion 엔진(선택)·Pixverse CLI 를 쓸 때만 |
+| 최소 | Claude | 글·인스타·쓰레드·숏츠(음성 + 글자 카드)는 나오지만 **사진이 빠집니다** |
+| **무료 추천** | Claude + Pexels + (Slack 또는 텔레그램) | 전부 나옵니다. 이미지·음성 비용 0원 |
+| 고품질 | 무료 추천 + Gemini 또는 Pixverse(+ ElevenLabs) | AI 이미지·영상 클립·고품질 음성. 유료 서비스가 실패하면 무료 쪽으로 자동 대체 |
+
+### 키 받는 법
+
+<details>
+<summary><b>Claude</b> — 필수</summary>
+
+1. [claude.ai](https://claude.ai) 에서 Pro 또는 Max 구독 (매일 실행하려면 Max 권장)
+2. [Claude Code 설치](https://code.claude.com/docs/en/setup) 후 터미널에서 `claude` 실행 → 브라우저로 로그인
+3. 구독 대신 API 로 쓰려면 [console.anthropic.com](https://console.anthropic.com) 에서 크레딧을 충전하고 Claude Code 로그인 때 API 키를 고릅니다.
+4. Docker 로 돌릴 때만 `.env` 에 `ANTHROPIC_API_KEY` 또는 `CLAUDE_CODE_OAUTH_TOKEN`(`claude setup-token` 으로 발급)을 넣습니다.
+</details>
+
+<details>
+<summary><b>Pexels</b> — 무료, 1분</summary>
+
+1. [pexels.com](https://www.pexels.com/ko-kr/) 오른쪽 위 **가입** (사진 사이트와 같은 계정)
+2. [pexels.com/api](https://www.pexels.com/api/) → **Get Started** / **Your API Key**
+3. 용도 설명(예: `Personal content automation for blog and short videos`)과 웹사이트(블로그 또는 GitHub 주소)를 적고 약관 동의
+4. 바로 나오는 키를 복사 → `.env` 의 `PEXELS_API_KEY=` 뒤에 붙여 넣기
+
+기본 한도는 시간당 200회·월 2만 회로, 하루 한 편에 충분합니다. 쓴 사진의 출처는 `images/credits.json` 에 자동으로 기록됩니다.
+</details>
+
+<details>
+<summary><b>Pixabay</b> — 무료, 선택</summary>
+
+[pixabay.com](https://pixabay.com) 가입·로그인 → [pixabay.com/api/docs](https://pixabay.com/api/docs/) 본문 중간 **Parameters** 의 `key` 항목에 내 키가 보입니다 → `PIXABAY_API_KEY=`
+</details>
+
+<details>
+<summary><b>Slack 알림</b> — 무료</summary>
+
+1. [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch** → 앱 이름·워크스페이스 선택
+2. 왼쪽 **Incoming Webhooks** → 켜기(On) → **Add New Webhook to Workspace** → 알림 받을 채널 선택
+3. 생성된 **Webhook URL**(`https://hooks.slack.com` 으로 시작) 을 복사 → `SLACK_WEBHOOK_URL=`
+</details>
+
+<details>
+<summary><b>텔레그램 알림</b> — 무료</summary>
+
+1. 텔레그램에서 [@BotFather](https://t.me/BotFather) 에게 `/newbot` → 봇 이름 정하기 → 받은 토큰 → `TELEGRAM_BOT_TOKEN=`
+2. 방금 만든 봇과 대화를 열어 아무 말이나 한 번 보냅니다.
+3. 브라우저에서 `https://api.telegram.org/bot<토큰>/getUpdates` 를 열어 `"chat":{"id":` 뒤 숫자 → `TELEGRAM_CHAT_ID=`
+</details>
+
+<details>
+<summary><b>Gemini</b> — 유료, 선택</summary>
+
+[aistudio.google.com/apikey](https://aistudio.google.com/apikey) → **Create API key** → `GEMINI_API_KEY=`
+무료 등급은 이미지 분당 한도가 0인 경우가 있어, Google Cloud 에서 **결제가 켜진 프로젝트**의 키를 권장합니다.
+</details>
+
+<details>
+<summary><b>ElevenLabs</b> — 유료, 선택</summary>
+
+[elevenlabs.io](https://elevenlabs.io) 가입 → 왼쪽 아래 프로필 또는 **Developers** → **API Keys** → **Create API key** → `ELEVENLABS_API_KEY=`
+</details>
+
+<details>
+<summary><b>Pixverse</b> — 유료 구독, 선택</summary>
+
+[pixverse.ai](https://pixverse.ai) 에서 구독 → 터미널에서 `npm install -g pixverse` → `pixverse auth login`(브라우저 로그인). `.env` 에 넣을 키는 없습니다.
+</details>
+
+### `.env` 에 넣기
+
+```bash
+cp .env.example .env      # Windows: copy .env.example .env
+```
+
+`.env` 를 메모장·에디터로 열어 받은 값만 채웁니다. 안 쓰는 줄은 비워 두면 됩니다.
+
+```
+PEXELS_API_KEY=
+PIXABAY_API_KEY=
+SLACK_WEBHOOK_URL=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+GEMINI_API_KEY=
+ELEVENLABS_API_KEY=
+```
+
+- 키를 **Claude 채팅창에 붙여 넣지 마세요.** `.env` 에만 넣으면 스크립트가 알아서 읽고, Claude 세션은 이 파일을 열지 않습니다.
+- `.env` 는 git 에 올라가지 않습니다(`.gitignore`).
+- 넣은 뒤 `python scripts/osmu.py selftest` 로 실제 연결을 확인합니다(무료 항목은 비용 없음). `--only stock` 처럼 하나만 검사할 수도 있습니다.
 
 ## 설치
 
@@ -65,14 +169,7 @@ Claude Code가 열리면:
 
 > `uv` 를 쓰는 분은 `uv sync` 로 고정된 버전을 그대로 설치할 수 있습니다(`uv.lock`). 일반 설치는 `/osmu-setup` 이 `.venv` + `pip install -r requirements.txt` 로 알아서 합니다.
 
-### 무료로 시작할 때 `.env` 에 넣을 것
-
-```
-PEXELS_API_KEY=여기에_키      # https://www.pexels.com/api/ 가입 후 "Your API Key" (1분)
-PIXABAY_API_KEY=              # (선택) Pexels 에서 못 찾을 때 이어서 검색
-```
-
-음성은 키가 필요 없습니다. 알림을 받으려면 `SLACK_WEBHOOK_URL` 또는 `TELEGRAM_BOT_TOKEN`·`TELEGRAM_CHAT_ID` 도 넣으세요.
+키 받는 법은 위 [가입·API 키 안내](#가입api-키-안내)를 보세요.
 
 ## 매일 무슨 일이 일어나나
 

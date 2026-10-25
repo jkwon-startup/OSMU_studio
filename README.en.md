@@ -11,7 +11,25 @@ A Claude Code content team that turns one topic into a Korean blog post, five im
 
 ## Requirements
 
-Claude Code, Python 3.10+, FFmpeg, git. Optional: a free Pexels/Pixabay API key, Slack webhook or Telegram bot, paid image/voice services, your own background music in `assets/bgm/`.
+Claude Code, Python 3.10+, FFmpeg, git. Optional: Node.js 18+ (Remotion engine / Pixverse CLI only), your own background music in `assets/bgm/`.
+
+## Accounts and API keys
+
+| Service | Needed? | Cost | Where to sign up | `.env` name | Used for |
+|---|---|---|---|---|---|
+| **Claude** (Anthropic) | **Required** | Pro/Max plan or API usage | [claude.ai](https://claude.ai), then log in to Claude Code | (none — login) | All writing, research, review |
+| **Pexels** | **Recommended** | Free | [pexels.com/api](https://www.pexels.com/api/) | `PEXELS_API_KEY` | Blog photos, Instagram backgrounds, shorts scenes/B-roll |
+| Pixabay | Optional | Free | [pixabay.com/api/docs](https://pixabay.com/api/docs/) | `PIXABAY_API_KEY` | Fallback stock search |
+| Slack | One of two for notifications | Free | [api.slack.com/apps](https://api.slack.com/apps) → Incoming Webhooks | `SLACK_WEBHOOK_URL` | Done/failed notification |
+| Telegram | One of two for notifications | Free | [@BotFather](https://t.me/BotFather) `/newbot` | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Done/failed notification |
+| Gemini | Optional (quality) | Paid | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | `GEMINI_API_KEY` | AI images, voice |
+| ElevenLabs | Optional (quality) | Paid | [elevenlabs.io](https://elevenlabs.io) → API Keys | `ELEVENLABS_API_KEY` | Premium voice |
+| Pixverse | Optional (quality) | Paid plan | [pixverse.ai](https://pixverse.ai) | (none — `pixverse auth login`) | AI images, image-to-video clips, voice |
+
+No sign-up needed for the narration voice (Microsoft Edge), GitHub (public repo) or fonts (bundled).
+**Free setup** = Claude + Pexels + Slack or Telegram. With Claude only, everything is produced except photos.
+
+Copy `.env.example` to `.env`, fill in only the keys you have, and run `python scripts/osmu.py selftest`. Never paste keys into the Claude chat — the scripts read `.env`; Claude sessions don't. Step-by-step instructions for each key are in the [Korean README](README.md#가입api-키-안내).
 
 ## Install
 
