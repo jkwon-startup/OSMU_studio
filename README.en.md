@@ -7,7 +7,16 @@ A Claude Code content team that turns one topic into a Korean blog post, five im
 - One lead (main session) and eight teammates (subagents): research → persona → five key points → hook copy → blog → humanize → images · SNS · shorts → review.
 - Writing rules target the Korean market (Naver search ranking, SGE/E-E-A-T, persona methodology). The output language is Korean.
 - **You can start for free with only Claude Code.** Narration uses the free Microsoft Edge voice (no key); photos and B-roll come from Pexels (free key). Gemini, ElevenLabs and Pixverse are optional upgrades.
+- Topics are read daily from a folder, a spreadsheet (Excel / Google Sheets) or a plan document; each short is made in a **live-action** or **motion-graphics** style.
 - Runs on macOS and Windows (and on Linux servers via Docker). It generates and saves; it never auto-posts.
+
+> **New in 1.1 (2026-10)**
+> - **Start free**: free Edge voice (no key) + free Pexels stock by default; paid services fall back to free ones, and finally to a captions-only video
+> - **Video quality**: background music with ducking, six transitions, 9:16 · 1:1 · 16:9, Korean-safe caption alignment
+> - **HTML motion templates**: one scene = one HTML file, add designs with CSS; Remotion is optional
+> - **Install & ops**: installer plugin, Docker, preflight checks before spending money, brand tokens, stronger review gates
+>
+> Details (Korean): [docs/UPDATE-1.1.md](docs/UPDATE-1.1.md)
 
 ## Requirements
 
