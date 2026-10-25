@@ -162,25 +162,34 @@ def segment_from_clip(clip: Path, seconds: float, out: Path) -> None:
 
 # ---------- 자산 ----------
 def make_assets(run_dir: Path, plan: dict, cfg: dict) -> list[dict]:
-    """실사 장면 이미지(9:16) + (Pixverse) 클립 생성."""
-    from image import generate
+    """실사 장면 이미지 + 클립(Pixverse 는 이미지→영상, stock 은 무료 스톡 영상) 생성. 실패해도 build 가 대체 화면을 쓴다."""
+    from image import generate, stock
     sdir = run_dir / "08_shorts"
-    provider = cfg.get("image_provider", "gemini")
+    provider = cfg.get("image_provider", "stock")
+    ratio = plan.get("aspect", "9:16")
     results = []
     scenes = plan.get("scenes") or []
-    items = [{"file": Path(s["file"]).name, "ratio": "9:16", "prompt": s["prompt"]} for s in scenes if not (sdir / s["file"]).exists()]
+    items = [{"file": Path(s["file"]).name, "ratio": ratio, "prompt": s.get("prompt", ""), "query": s.get("query", "")}
+             for s in scenes if not (sdir / s["file"]).exists()]
     if items:
         results += generate.generate_all(run_dir, items, provider, cfg, out_dir=sdir / "scenes")
     env = load_env()
     for s in scenes:
-        if s.get("clip") and provider == "pixverse":
-            out = sdir / "clips" / f"{s['id']}.mp4"
-            if out.exists():
-                continue
-            out.parent.mkdir(parents=True, exist_ok=True)
-            ok, d = generate.pixverse_clip(sdir / s["file"], s.get("clip_prompt", "subtle camera push-in"), "9:16", out, env, cfg, 5)
-            results.append({"file": out.name, "ok": ok, "detail": d})
-            print(f"[{'OK' if ok else 'FAIL'}] clip {s['id']} {d if not ok else ''}")
+        if not s.get("clip"):
+            continue
+        out = sdir / "clips" / f"{s['id']}.mp4"
+        if out.exists():
+            continue
+        out.parent.mkdir(parents=True, exist_ok=True)
+        if provider == "pixverse":
+            ok, d = generate.pixverse_clip(sdir / s["file"], s.get("clip_prompt", "subtle camera push-in"), ratio, out, env, cfg, 5)
+        elif stock.available(env):
+            q = (s.get("query") or "").strip() or stock.query_from_prompt(s.get("prompt", ""))
+            ok, d = stock.fetch("video", q, ratio, out, env, sdir / "clips" / "credits.json")
+        else:
+            continue
+        results.append({"file": out.name, "ok": ok, "detail": d})
+        print(f"[{'OK' if ok else 'FAIL'}] clip {s['id']} {d if not ok else ''}")
     return results
 
 

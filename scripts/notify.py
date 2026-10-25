@@ -9,6 +9,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from common import redact
+
 TIMEOUT = 15
 
 
@@ -39,6 +41,7 @@ def send_telegram(bot_token: str, chat_id: str, text: str) -> tuple[bool, str]:
 
 def send(channel: str, env: dict[str, str], text: str) -> tuple[bool, str]:
     """channel: 'slack' | 'telegram'. 키는 env dict 에서 읽는다 (값은 로그에 남기지 않는다)."""
+    text = redact(text, env)  # 오류 메시지에 섞인 키가 알림으로 나가지 않게
     if channel == "slack":
         url = env.get("SLACK_WEBHOOK_URL", "")
         if not url:

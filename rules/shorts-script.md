@@ -51,7 +51,7 @@
   "style": "photoreal",
   "thumbnail_text": "…(12자 이내)",
   "beats": [
-    {"id": "hook", "narration": "…", "caption": "…", "scene_prompt": "…(실사) 또는 template/props(모션)", "target_s": 3}
+    {"id": "hook", "narration": "…", "caption": "…", "scene_prompt": "…(실사)", "scene_query": "laptop cafe morning", "target_s": 3}
   ],
   "full_narration": "…(beats 를 이은 전체 문장)",
   "tts_text": "…(숫자를 한글로 푼 TTS 입력)"

@@ -1,4 +1,4 @@
-"""도구 점검 (doctor) — 설치자 PC에 필요한 외부 도구가 있는지 OS별로 확인한다. LLM·네트워크 호출 없음."""
+"""도구 점검 (doctor) — 설치자 PC에 필요한 외부 도구가 있는지 OS별로 확인한다. LLM 호출 없음(업데이트 확인만 git 으로 짧게)."""
 from __future__ import annotations
 
 import platform
@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import IS_WINDOWS, ROOT, load_env  # noqa: E402
+from common import IS_WINDOWS, ROOT, load_config, load_env  # noqa: E402
 
 REQUIRED_FILTERS = ["zoompan", "loudnorm", "overlay", "concat", "freezedetect", "ebur128"]
 REQUIRED_ENCODERS = ["libx264", "aac"]
@@ -80,6 +80,14 @@ def check_all() -> list[dict]:
     except ImportError:
         add("Pillow (이미지 합성)", False, "미설치", hint="pip install -r requirements.txt (.venv 안에서)")
     try:
+        import edge_tts  # noqa: F401
+        add("edge-tts (무료 음성)", True, getattr(edge_tts, "__version__", "설치됨"))
+    except ImportError:
+        add("edge-tts (무료 음성)", False, "미설치 — 숏츠가 무음(자막만)으로 만들어짐", required=False,
+            hint="pip install -r requirements.txt (.venv 안에서)")
+    pw_ok, pw_detail, pw_hint = _playwright_status()
+    add("Playwright + Chromium (모션그래픽 HTML 템플릿)", pw_ok, pw_detail, required=False, hint=pw_hint)
+    try:
         import openpyxl  # noqa: F401
         add("openpyxl (xlsx 주제 소스)", True, openpyxl.__version__, required=False)
     except ImportError:
@@ -95,13 +103,58 @@ def check_all() -> list[dict]:
         hint="npm install -g pixverse 후 pixverse auth login")
 
     env = load_env()
-    for key, label in [("GEMINI_API_KEY", "Gemini"), ("ELEVENLABS_API_KEY", "ElevenLabs"),
+    if not (ROOT / ".env").exists():
+        add(".env 파일", False, "없음", required=False, hint=".env.example 을 복사해 .env 로 이름을 바꾸고 필요한 키만 넣으세요")
+    for key, label in [("PEXELS_API_KEY", "Pexels 무료 스톡"), ("PIXABAY_API_KEY", "Pixabay 무료 스톡"),
+                       ("GEMINI_API_KEY", "Gemini"), ("ELEVENLABS_API_KEY", "ElevenLabs"),
                        ("SLACK_WEBHOOK_URL", "Slack 웹훅"), ("TELEGRAM_BOT_TOKEN", "텔레그램 봇"), ("YOUTUBE_API_KEY", "YouTube Data API")]:
         add(f".env {key} ({label})", bool(env.get(key)), "있음" if env.get(key) else "없음", required=False)
+    cfg = load_config()
+    if cfg.get("image_provider") == "stock" and not (env.get("PEXELS_API_KEY") or env.get("PIXABAY_API_KEY")):
+        add("이미지 서비스 준비", False, "image_provider=stock 인데 스톡 키가 없음 — 블로그 이미지가 비고 숏츠는 글자 카드로 대체됨",
+            required=False, hint="https://www.pexels.com/api/ 에서 무료 키(1분) → .env 에 PEXELS_API_KEY=… 추가")
 
     add("폰트 (assets/fonts)", any((ROOT / "assets" / "fonts").glob("*.?tf")) if (ROOT / "assets" / "fonts").exists() else False,
-        required=False, hint="저장소에 동봉 예정 (OFL 한글 폰트)")
+        hint="저장소의 assets/fonts 가 비었습니다 — git pull 또는 저장소를 다시 받으세요")
+    bgm = sorted(p.name for p in (ROOT / "assets" / "bgm").glob("*") if p.suffix.lower() in (".mp3", ".m4a", ".wav", ".ogg")) \
+        if (ROOT / "assets" / "bgm").exists() else []
+    add("배경음악 (assets/bgm)", bool(bgm), f"{len(bgm)}곡" if bgm else "없음 — 배경음악 없이 만들어짐", required=False,
+        hint="저작권 걱정 없는 음악(직접 만든 곡, YouTube 오디오 보관함 등)을 assets/bgm/ 에 mp3 로 넣으면 자동 사용")
+    upd = _update_status()
+    if upd:
+        add("새 버전", False, upd, required=False, hint="저장소 폴더에서 git pull 후 pip install -r requirements.txt")
     return rows
+
+
+def _playwright_status() -> tuple[bool, str, str]:
+    hint = "pip install -r requirements.txt 후 python -m playwright install chromium (없으면 정적 카드로 대체)"
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return False, "미설치", hint
+    try:
+        with sync_playwright() as p:
+            exe = Path(p.chromium.executable_path)
+        return (exe.exists(), "Chromium 있음" if exe.exists() else "Chromium 미설치", hint)
+    except Exception as e:  # 드라이버 문제 등
+        return False, f"확인 실패 {type(e).__name__}", hint
+
+
+def _update_status() -> str | None:
+    """원격 main 과 비교해 새 커밋이 있으면 안내(2초 안에 안 되면 조용히 넘어감)."""
+    git = _which("git")
+    if not git or not (ROOT / ".git").exists():
+        return None
+    try:
+        local = subprocess.run([git, "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5).stdout.strip()
+        remote = subprocess.run([git, "-C", str(ROOT), "ls-remote", "origin", "refs/heads/main"], capture_output=True, text=True,
+                                timeout=4).stdout.split()
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if not remote or not local or remote[0] == local:
+        return None
+    known = subprocess.run([git, "-C", str(ROOT), "cat-file", "-e", remote[0]], capture_output=True).returncode == 0
+    return None if known else "저장소에 새 업데이트가 있습니다"
 
 
 def print_report(rows: list[dict]) -> bool:

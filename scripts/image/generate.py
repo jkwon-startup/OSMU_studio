@@ -1,9 +1,10 @@
-"""이미지 생성 — 설치 때 고른 서비스(gemini | pixverse)로 prompts.json 의 항목을 만든다. 키는 .env 에서만 읽는다.
+"""이미지 생성 — 설치 때 고른 서비스(stock | gemini | pixverse)로 prompts.json 의 항목을 만든다. 키는 .env 에서만 읽는다.
 
-  python3 scripts/osmu.py image --run <run> [--prompts-stdin | --prompts images/prompts.json] [--provider gemini|pixverse]
+  python3 scripts/osmu.py image --run <run> [--prompts-stdin | --prompts images/prompts.json] [--provider stock|gemini|pixverse]
 
-prompts.json 항목: {"file": "blog_1.jpg", "ratio": "16:9", "prompt": "...", "ref": "(선택) 참조 이미지 경로"}
-결과: <run>/images/<file> (실패 항목은 건너뛰고 image_results.json 에 기록)
+prompts.json 항목: {"file": "blog_1.jpg", "ratio": "16:9", "prompt": "...", "query": "(stock) 영어 검색어", "ref": "(선택) 참조 이미지 경로"}
+결과: <run>/images/<file> (실패 항목은 건너뛰고 image_results.json 에 기록), 스톡 출처는 credits.json
+생성 서비스가 실패하면(한도·결제·키) 스톡 키가 있을 때 스톡 사진으로 대체한다(config image_fallback_stock, 기본 켬).
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import load_env  # noqa: E402
+from common import load_env, redact  # noqa: E402
 
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 NO_TEXT = " No text, no letters, no numbers, no logos, no watermark, no UI."
@@ -143,24 +144,48 @@ def _save_as_jpg(raw: bytes, out: Path, ratio: str) -> None:
     im.save(out, "JPEG", quality=92)
 
 
+def stock_image(it: dict, ratio: str, out: Path, env: dict, credits_path: Path) -> tuple[bool, str]:
+    from image import stock
+    query = (it.get("query") or "").strip() or stock.query_from_prompt(it.get("prompt", ""))
+    raw = out.with_suffix(".stock")
+    ok, detail = stock.fetch("photo", query, ratio, out, env, credits_path, raw_out=raw)
+    if ok:
+        try:
+            _save_as_jpg(raw.read_bytes(), out, ratio)
+        except Exception as e:
+            ok, detail = False, f"사진 변환 실패 {type(e).__name__}"
+    raw.unlink(missing_ok=True)
+    return ok, detail
+
+
 def generate_all(run_dir: Path, items: list[dict], provider: str, cfg: dict, out_dir: Path | None = None) -> list[dict]:
+    from image import stock
     env = load_env()
     img_dir = out_dir or (run_dir / "images")
     img_dir.mkdir(parents=True, exist_ok=True)
     (img_dir / "prompts.json").write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    credits_path = img_dir / "credits.json"
+    fallback_ok = cfg.get("image_fallback_stock", True) and stock.available(env)
     results = []
     for it in items:
         out = img_dir / it["file"]
         ratio = it.get("ratio", "16:9")
         ref = (run_dir / it["ref"]) if it.get("ref") else None
         t0 = time.time()
-        if provider == "gemini":
-            ok, detail = gemini_image(it["prompt"], ratio, out, env, cfg)
+        if provider == "stock":
+            ok, detail = stock_image(it, ratio, out, env, credits_path)
+        elif provider == "gemini":
+            ok, detail = gemini_image(it.get("prompt", ""), ratio, out, env, cfg)
         elif provider == "pixverse":
-            ok, detail = pixverse_image(it["prompt"], ratio, out, env, cfg, ref)
+            ok, detail = pixverse_image(it.get("prompt", ""), ratio, out, env, cfg, ref)
         else:
-            ok, detail = False, f"알 수 없는 provider {provider}"
+            ok, detail = False, f"알 수 없는 image_provider '{provider}' — stock, gemini, pixverse 중 하나로 설정하세요"
+        if not ok and provider != "stock" and fallback_ok:
+            ok2, d2 = stock_image(it, ratio, out, env, credits_path)
+            if ok2:
+                ok, detail = True, f"{provider} 실패({detail[:60]}) → 스톡 사진으로 대체: {d2}"
+        detail = redact(detail, env)
         results.append({"file": it["file"], "ok": ok, "detail": detail, "seconds": round(time.time() - t0, 1)})
-        print(f"[{'OK' if ok else 'FAIL'}] {it['file']} ({results[-1]['seconds']}s) {detail if not ok else ''}")
+        print(f"[{'OK' if ok else 'FAIL'}] {it['file']} ({results[-1]['seconds']}s) {detail if (not ok or '대체' in detail) else ''}")
     (img_dir / "image_results.json").write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
     return results

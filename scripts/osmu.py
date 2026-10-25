@@ -7,6 +7,9 @@
   python3 scripts/osmu.py mark-done REF [--retry] 주제 완료/재시도 표시
   python3 scripts/osmu.py notify "메시지"         알림 전송 (config.notify.channel)
   python3 scripts/osmu.py scan [--staged]        비밀값 검사
+  python3 scripts/osmu.py config-show            실제 적용 설정(기본값 + 내 설정) 보기
+  python3 scripts/osmu.py tts --run R            숏츠 음성 (기본 무료 edge, 실패 시 자동 폴백)
+  python3 scripts/osmu.py image --run R          이미지 (기본 무료 스톡)
 
 무인 세션의 권한 규칙이 `Bash(<python> scripts/osmu.py *)` 한 줄로 끝나도록 모든 기능을 이 파일로 모은다.
 """
@@ -21,7 +24,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from common import OUTPUT_DIR, ensure_utf8_stdout, kst_now, load_config, load_env, read_json, write_json  # noqa: E402
+from common import CONFIG_DIR, OUTPUT_DIR, ensure_utf8_stdout, kst_now, load_config, load_env, read_json, write_json  # noqa: E402
 
 
 def cmd_doctor(_):
@@ -110,7 +113,7 @@ def cmd_image(a):
         items = json.loads(sys.stdin.read())
     else:
         items = json.loads(Path(a.prompts or (run_dir / "images" / "prompts.json")).read_text(encoding="utf-8"))
-    provider = a.provider or cfg.get("image_provider", "gemini")
+    provider = a.provider or cfg.get("image_provider", "stock")
     print(f"이미지 {len(items)}장 생성 — provider={provider}")
     results = generate.generate_all(run_dir, items, provider, cfg)
     return 0 if all(r["ok"] for r in results) else 1
@@ -141,7 +144,7 @@ def cmd_video(a):
         script = json.loads((sdir / "script.json").read_text(encoding="utf-8"))
         timing = json.loads((sdir / "timing.json").read_text(encoding="utf-8"))
         style = a.style or script.get("style") or "photoreal"
-        plan = plan_schema.auto_plan(script, timing, style, cfg.get("image_provider", "gemini"))
+        plan = plan_schema.auto_plan(script, timing, style, cfg.get("image_provider", "stock"))
         write_json(sdir / "plan.json", plan)
         print(f"plan.json: {len(plan['shots'])} shots, {len(plan['captions'])} captions, {plan['duration_s']}s, style={style}")
     if a.action in ("plan-check", "auto-plan", "assets", "build", "all"):
@@ -182,16 +185,30 @@ def cmd_schedule(a):
 
 def cmd_config_write(a):
     """설치 커맨드가 config.local.json 을 쓸 때 사용 (stdin 으로 JSON). 비밀값은 받지 않는다."""
-    data = json.loads(sys.stdin.read())
+    try:
+        data = json.loads(sys.stdin.read())
+    except json.JSONDecodeError as e:
+        print(f"거부: JSON 형식 오류 — {e}")
+        return 1
+    if not isinstance(data, dict):
+        print("거부: {\"키\": 값} 형태의 JSON 객체여야 합니다")
+        return 1
     for k in list(data):
         if any(s in k.upper() for s in ("KEY", "TOKEN", "SECRET", "WEBHOOK", "PASSWORD")):
             print(f"거부: '{k}' 는 비밀값으로 보임 — .env 에 직접 넣으세요")
             return 1
-    path = Path("config/config.local.json")
+    path = CONFIG_DIR / "config.local.json"
     cur = read_json(path, {}) or {}
     cur.update(data)
     write_json(path, cur)
     print(f"config.local.json 갱신: {', '.join(data.keys())}")
+    return 0
+
+
+def cmd_config_show(_):
+    """실제로 적용되는 설정(기본값 + 내 설정)을 보여준다. 팀장 세션도 이것으로 설정을 읽는다."""
+    cfg = {k: v for k, v in load_config().items() if not k.startswith("_comment")}
+    print(json.dumps(cfg, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -239,6 +256,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("video"); p.add_argument("action", choices=["plan-check", "auto-plan", "assets", "build", "all"]); p.add_argument("--run", required=True); p.add_argument("--style"); p.set_defaults(fn=cmd_video)
     p = sub.add_parser("schedule"); p.add_argument("action", choices=["install", "uninstall", "status", "run-now", "render"]); p.add_argument("--label"); p.add_argument("--out"); p.add_argument("--windows", action="store_true"); p.set_defaults(fn=cmd_schedule)
     p = sub.add_parser("config-write"); p.set_defaults(fn=cmd_config_write)
+    sub.add_parser("config-show").set_defaults(fn=cmd_config_show)
     p = sub.add_parser("check"); p.add_argument("run_dir"); p.add_argument("--only"); p.set_defaults(fn=cmd_check)
     p = sub.add_parser("humanize-gate"); p.add_argument("original"); p.add_argument("rewritten")
     p.add_argument("--keywords"); p.add_argument("--title"); p.add_argument("--out"); p.set_defaults(fn=cmd_humanize_gate)

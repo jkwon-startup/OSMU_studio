@@ -10,11 +10,12 @@ model: sonnet
 ## 절차
 
 1. 프롬프트 6개(blog_1~5 가로 16:9, instagram_bg 3:4)를 쓴다. 영어 60~120단어, 끝에 `No text, no letters, no numbers, no logos, no watermark, no UI.` 5장은 한 세계관(조명·색감·시간대), 구도는 섞는다. 얼굴 정면 클로즈업 금지.
+   각 항목에 **스톡 검색어 `query`** 도 함께 쓴다 — 영어 구체 명사 2~4개(예: `"laptop cafe morning"`, `"smartphone desk notebook"`). 무료 스톡 사진을 쓰는 설치자나 생성 서비스가 실패했을 때 이 검색어로 사진을 찾는다. 추상어(success, growth) 대신 화면에 보이는 사물·장소를 쓴다.
 2. **Write 도구로** `<run>/images/prompts.json` 을 저장한다 (output 폴더 안이라 허용된다). 형식:
-   `[{"file":"blog_1.jpg","key_point":1,"ratio":"16:9","prompt":"…"}, …, {"file":"instagram_bg.jpg","ratio":"3:4","prompt":"…"}]`
+   `[{"file":"blog_1.jpg","key_point":1,"ratio":"16:9","prompt":"…","query":"…"}, …, {"file":"instagram_bg.jpg","ratio":"3:4","prompt":"…","query":"…"}]`
 3. Bash 로 `<python> scripts/osmu.py image --run <run>` 을 실행한다 (prompts.json 을 읽는다. 프롬프트에 `<python>` 경로가 주어진다). stdin·heredoc·파이프는 쓰지 않는다 — 단일 명령 한 줄만.
 4. 이어서 `<python> scripts/osmu.py compose --run <run> --text "<인스타 이미지 위 카피>"` 로 `instagram.jpg`(3:4, 카피 합성)를 만든다.
-5. 결과 보고: 생성된 파일 목록, 실패한 항목과 오류 메시지(키 값은 절대 출력하지 않는다). 실패한 장은 prompts.json 의 해당 프롬프트만 바꿔 **1회만** 재시도한다(`image` 는 이미 있는 파일은 건너뛰지 않으므로 실패한 항목만 남긴 별도 JSON 을 `--prompts` 로 넘긴다).
+5. 결과 보고: 생성된 파일 목록, 스톡으로 대체된 항목(출력에 "대체" 표시), 실패한 항목과 오류 메시지(키 값은 절대 출력하지 않는다). 스톡 키가 없다는 오류면 재시도하지 말고 그대로 보고한다(설치자가 키를 넣어야 해결된다). 실패한 장은 prompts.json 의 해당 프롬프트만 바꿔 **1회만** 재시도한다(`image` 는 이미 있는 파일은 건너뛰지 않으므로 실패한 항목만 남긴 별도 JSON 을 `--prompts` 로 넘긴다).
 
 ## 금지
 - 이미지 모델에게 글자를 그리게 하지 않는다.

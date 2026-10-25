@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import IS_WINDOWS, ROOT  # noqa: E402
+from common import IS_WINDOWS, ROOT, redact  # noqa: E402
 
 
 def find_claude(configured: str | None = None) -> str | None:
@@ -122,6 +122,6 @@ def run_claude(call: ClaudeCall, claude_path: str, timeout_s: int = 1800, log_pa
                            time.time() - t0, timed_out=True)
     if log_path:
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        log_path.write_text(f"$ {' '.join(argv)}\n[exit {res.returncode}, {res.seconds:.0f}s, timeout={res.timed_out}]\n"
-                            f"--- stdout ---\n{res.stdout}\n--- stderr ---\n{res.stderr}\n", encoding="utf-8")
+        log_path.write_text(redact(f"$ {' '.join(argv)}\n[exit {res.returncode}, {res.seconds:.0f}s, timeout={res.timed_out}]\n"
+                                   f"--- stdout ---\n{res.stdout}\n--- stderr ---\n{res.stderr}\n"), encoding="utf-8")
     return res

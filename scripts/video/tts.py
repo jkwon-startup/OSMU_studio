@@ -1,10 +1,16 @@
 """TTS + 문장별 타이밍 — 공급자 무관(문장별 합성 → ffprobe 길이 누적 → concat). 양 OS.
 
-  python3 scripts/osmu.py tts --run <run> [--provider elevenlabs|gemini|pixverse]
+  python3 scripts/osmu.py tts --run <run> [--provider edge|elevenlabs|gemini|pixverse|silent]
 
 입력: <run>/08_shorts/script.json (beats[].narration / tts_text 또는 beats[].tts)
 출력: <run>/08_shorts/narration.mp3, timing.json
-  timing.json = {"total_s": 29.8, "units": [{"beat": "hook", "text": "하루 30분, 진짜 될까요?", "tts": "하루 삼십 분…", "start": 0.0, "end": 2.1}, …]}
+  timing.json = {"provider": "edge", "fallback": [], "total_s": 29.8,
+                 "units": [{"beat": "hook", "text": "하루 30분, 진짜 될까요?", "tts": "하루 삼십 분…", "start": 0.0, "end": 2.1,
+                            "words": [{"text": "하루", "start": 0.1, "end": 0.4}, …]}, …]}   # words 는 edge 일 때만
+
+공급자가 실패하면(키 없음·한도·네트워크) config `tts_fallback`(기본 edge → silent) 순서로 내려간다.
+- edge: Microsoft Edge 무료 음성(edge-tts 패키지, 키 불필요, 인터넷 필요). 단어별 타이밍도 받는다.
+- silent: 음성 없이 글자 수로 길이를 추정한 무음 — 자막만 있는 숏츠라도 끝까지 만든다.
 """
 from __future__ import annotations
 
@@ -19,10 +25,18 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import load_env  # noqa: E402
+from common import load_env, redact  # noqa: E402
 
 GAP_S = 0.18  # 문장 사이 쉼
 SENT_RX = re.compile(r"(?<=[.?!…])\s+")
+PROVIDERS = ("edge", "elevenlabs", "gemini", "pixverse", "silent")
+DEFAULT_FALLBACK = ["edge", "silent"]
+EDGE_VOICE = "ko-KR-SunHiNeural"
+SILENT_CPS = 7.0  # 무음 모드 길이 추정: 약 7자/초 (rules/shorts-script.md)
+
+
+class ProviderUnavailable(RuntimeError):
+    """이 공급자로는 진행 불가 — 다음 폴백으로 넘어간다."""
 
 
 def split_sentences(text: str) -> list[str]:
@@ -124,6 +138,46 @@ def synth_pixverse(text: str, out: Path, env, cfg) -> tuple[bool, str]:
     return True, "ok"
 
 
+def synth_edge(text: str, out: Path, cfg) -> tuple[bool, str, list[dict]]:
+    """무료 Edge 음성. 단어 경계 타이밍(초, 문장 기준)을 함께 돌려준다."""
+    try:
+        import asyncio
+        import edge_tts
+    except ImportError:
+        return False, "edge-tts 패키지 없음 — `pip install -r requirements.txt` 를 .venv 안에서 다시 실행하세요", []
+    voice = cfg.get("edge_tts_voice") or EDGE_VOICE
+    rate = cfg.get("edge_tts_rate") or "+0%"
+    if not re.fullmatch(r"[+-]\d{1,3}%", rate):
+        rate = "+0%"
+
+    async def go():
+        com = edge_tts.Communicate(text, voice, rate=rate, boundary="WordBoundary")
+        audio, words = bytearray(), []
+        async for ch in com.stream():
+            if ch["type"] == "audio":
+                audio += ch["data"]
+            elif ch["type"] == "WordBoundary":
+                st = ch["offset"] / 1e7
+                words.append({"text": ch["text"], "start": round(st, 3), "end": round(st + ch["duration"] / 1e7, 3)})
+        return bytes(audio), words
+
+    try:
+        audio, words = asyncio.run(go())
+    except Exception as e:  # 네트워크 차단·음성 이름 오류 등
+        return False, f"{type(e).__name__}: {str(e)[:120]} (인터넷 연결 또는 config edge_tts_voice 확인)", []
+    if len(audio) < 1000:
+        return False, "오디오가 비어 있음", []
+    out.write_bytes(audio)
+    return True, "ok", words
+
+
+def synth_silent(text: str, out: Path) -> tuple[bool, str]:
+    seconds = max(0.8, len(text.strip()) / SILENT_CPS)
+    p = subprocess.run([shutil.which("ffmpeg"), "-y", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
+                        "-t", f"{seconds:.3f}", "-codec:a", "libmp3lame", "-b:a", "128k", str(out)], capture_output=True, text=True)
+    return (p.returncode == 0), (p.stderr[-160:] or "ok")
+
+
 # ---------- 조립 ----------
 def ffprobe_duration(p: Path) -> float:
     out = subprocess.run([shutil.which("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(p)],
@@ -131,37 +185,91 @@ def ffprobe_duration(p: Path) -> float:
     return float(out)
 
 
-def run(run_dir: Path, cfg: dict, provider: str | None = None) -> dict:
-    env = load_env()
-    sdir = run_dir / "08_shorts"
-    script = json.loads((sdir / "script.json").read_text(encoding="utf-8"))
-    provider = provider or cfg.get("tts_provider", "elevenlabs")
-    units = units_from_script(script)
-    parts_dir = sdir / "tts_parts"
-    parts_dir.mkdir(parents=True, exist_ok=True)
-    voice = eleven_voice(env, cfg) if provider == "elevenlabs" else None
-    if provider == "elevenlabs" and not (env.get("ELEVENLABS_API_KEY") and voice):
-        raise RuntimeError("ELEVENLABS_API_KEY 또는 음성 없음")
-    if provider == "gemini" and not env.get("GEMINI_API_KEY"):
-        raise RuntimeError("GEMINI_API_KEY 없음")
+def provider_chain(primary: str, cfg: dict) -> list[str]:
+    """설정 공급자 → tts_fallback 순. 알 수 없는 이름은 건너뛴다(오타가 있어도 실행은 이어지게)."""
+    fallback = cfg.get("tts_fallback", DEFAULT_FALLBACK)
+    if not isinstance(fallback, list):
+        fallback = DEFAULT_FALLBACK
+    chain: list[str] = []
+    for p in [primary, *fallback]:
+        if p not in PROVIDERS:
+            print(f"[알림] 알 수 없는 음성 공급자 '{p}' 는 건너뜁니다 (가능: {', '.join(PROVIDERS)})")
+        elif p not in chain:
+            chain.append(p)
+    return chain or ["silent"]
 
+
+def _precheck(provider: str, env: dict, cfg: dict) -> str | None:
+    """돈·시간을 쓰기 전에 확인. 문제가 있으면 쉬운 설명을 돌려준다."""
+    if provider == "elevenlabs" and not env.get("ELEVENLABS_API_KEY"):
+        return ".env 에 ELEVENLABS_API_KEY 가 없습니다"
+    if provider == "gemini" and not env.get("GEMINI_API_KEY"):
+        return ".env 에 GEMINI_API_KEY 가 없습니다"
+    if provider == "pixverse":
+        from image.generate import pixverse_cmd
+        if not pixverse_cmd(env):
+            return "Pixverse CLI 가 없습니다 (npm install -g pixverse 후 pixverse auth login)"
+    return None
+
+
+def _synth_all(provider: str, units: list[dict], parts_dir: Path, env: dict, cfg: dict) -> None:
+    """한 공급자로 모든 문장을 합성한다. 한 문장이라도 실패하면 ProviderUnavailable (목소리가 섞이지 않게 통째로 폴백)."""
+    reason = _precheck(provider, env, cfg)
+    if reason:
+        raise ProviderUnavailable(reason)
+    voice = None
+    if provider == "elevenlabs":
+        voice = eleven_voice(env, cfg)
+        if not voice:
+            raise ProviderUnavailable("ElevenLabs 음성 목록을 받지 못했습니다(키 오류 또는 네트워크)")
     t = 0.0
     for i, u in enumerate(units):
-        out = parts_dir / f"{i:02d}.mp3"
-        if provider == "elevenlabs":
+        out = parts_dir / f"{provider}_{i:02d}.mp3"
+        words: list[dict] = []
+        if provider == "edge":
+            ok, d, words = synth_edge(u["tts"], out, cfg)
+        elif provider == "elevenlabs":
             ok, d = synth_elevenlabs(u["tts"], out, env, cfg, voice)
         elif provider == "gemini":
             ok, d = synth_gemini(u["tts"], out, env, cfg)
         elif provider == "pixverse":
             ok, d = synth_pixverse(u["tts"], out, env, cfg)
         else:
-            raise RuntimeError(f"알 수 없는 tts_provider {provider}")
+            ok, d = synth_silent(u["tts"], out)
         if not ok:
-            raise RuntimeError(f"TTS 실패({i}: {u['text'][:20]}…): {d}")
+            raise ProviderUnavailable(f"{i + 1}번째 문장 실패: {d}")
         dur = ffprobe_duration(out)
         u["start"], u["end"], u["file"] = round(t, 3), round(t + dur, 3), out.name
+        if words:
+            u["words"] = [{**w, "start": round(t + w["start"], 3), "end": round(t + w["end"], 3)} for w in words]
+        else:
+            u.pop("words", None)
         t += dur + GAP_S
         print(f"[{i:02d}] {u['start']:5.2f}-{u['end']:5.2f}s  {u['text']}")
+
+
+def run(run_dir: Path, cfg: dict, provider: str | None = None) -> dict:
+    env = load_env()
+    sdir = run_dir / "08_shorts"
+    script = json.loads((sdir / "script.json").read_text(encoding="utf-8"))
+    primary = provider or cfg.get("tts_provider", "edge")
+    units = units_from_script(script)
+    parts_dir = sdir / "tts_parts"
+    parts_dir.mkdir(parents=True, exist_ok=True)
+
+    fallback_log: list[dict] = []
+    used = None
+    for p in provider_chain(primary, cfg):
+        print(f"음성 공급자: {p}")
+        try:
+            _synth_all(p, units, parts_dir, env, cfg)
+            used = p
+            break
+        except ProviderUnavailable as e:
+            fallback_log.append({"provider": p, "reason": redact(str(e), env)})
+            print(f"[알림] {p} 음성을 쓸 수 없어 다음 방법으로 넘어갑니다 — {fallback_log[-1]['reason']}")
+    if not used:
+        raise RuntimeError("모든 음성 방법이 실패했습니다: " + " / ".join(f"{f['provider']}: {f['reason']}" for f in fallback_log))
 
     # concat (문장 사이 GAP 무음 삽입)
     listing = sdir / "tts_concat.txt"
@@ -177,7 +285,9 @@ def run(run_dir: Path, cfg: dict, provider: str | None = None) -> dict:
     subprocess.run([shutil.which("ffmpeg"), "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(listing),
                     "-codec:a", "libmp3lame", "-b:a", "128k", str(narration)], check=True)
     total = ffprobe_duration(narration)
-    timing = {"provider": provider, "total_s": round(total, 3), "units": units}
+    timing = {"provider": used, "fallback": fallback_log, "total_s": round(total, 3), "units": units}
     (sdir / "timing.json").write_text(json.dumps(timing, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"narration.mp3 {total:.1f}s (대본 목표 {script.get('duration_s')}s)")
+    print(f"narration.mp3 {total:.1f}s (대본 목표 {script.get('duration_s')}s, 음성 {used})")
+    if used == "silent":
+        print("[알림] 음성 없이 자막만 있는 숏츠가 됩니다. 음성을 넣으려면 인터넷 연결을 확인하거나 `osmu.py selftest --only edge_tts` 를 실행해 보세요.")
     return timing

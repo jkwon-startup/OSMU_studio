@@ -1,6 +1,7 @@
 """외부 연결 검사 (selftest) — 설정된 서비스에 실제로 1건씩 호출해 PASS/FAIL 을 보고한다.
 
-비용이 드는 호출(이미지 1장, TTS 1문장)이 포함되므로 설치 때와 문제 진단 때만 실행한다.
+유료 서비스를 설정했다면 비용이 드는 호출(이미지 1장, TTS 1문장)이 포함되므로 설치 때와 문제 진단 때만 실행한다.
+무료 경로(edge-tts, 스톡)는 비용이 없다.
 결과 파일은 output/selftest/ 에 저장. 키 값은 절대 출력하지 않는다.
 
 사용: python3 scripts/osmu.py selftest [--only slack,gemini_image,...]
@@ -201,6 +202,26 @@ def check_youtube(env, cfg):
     return status == 200, f"HTTP {status}, 결과 {len(data.get('items', []))}건"
 
 
+def check_edge_tts(env, cfg):
+    """무료 음성 — 키 없이 한 문장 합성 + 단어 타이밍."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from video.tts import synth_edge
+    out = OUT / "edge_tts_test.mp3"
+    ok, d, words = synth_edge(TEST_SENTENCE, out, cfg)
+    if not ok:
+        return False, d
+    return True, f"{cfg.get('edge_tts_voice') or 'ko-KR-SunHiNeural'} → {out.name} ({out.stat().st_size // 1024} KB, 단어 타이밍 {len(words)}개)"
+
+
+def check_stock(env, cfg):
+    """무료 스톡 — 사진 1장 검색·다운로드 (Pexels 우선, 없으면 Pixabay)."""
+    from image import stock
+    if not stock.available(env):
+        return None, "PEXELS_API_KEY / PIXABAY_API_KEY 없음 — 건너뜀 (https://www.pexels.com/api/ 무료 키)"
+    ok, d = stock.fetch("photo", "coffee desk morning", "3:4", OUT / "stock_test.jpg", env, OUT / "stock_credits.json")
+    return ok, d
+
+
 def check_ffmpeg_compose(env, cfg):
     """외부 서비스 없이: 단색 이미지 + 무음으로 2초 mp4 를 만들어 합성 경로가 동작하는지."""
     ff = shutil.which("ffmpeg")
@@ -218,6 +239,8 @@ def check_ffmpeg_compose(env, cfg):
 
 CHECKS = [
     ("ffmpeg_compose", "FFmpeg 합성(로컬)", check_ffmpeg_compose),
+    ("edge_tts", "무료 음성 edge-tts", check_edge_tts),
+    ("stock", "무료 스톡 사진 (Pexels/Pixabay)", check_stock),
     ("slack", "Slack 알림", check_slack),
     ("telegram", "텔레그램 알림", check_telegram),
     ("gemini_image", "Gemini 이미지 3:4", check_gemini_image),

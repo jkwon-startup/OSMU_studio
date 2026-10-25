@@ -23,13 +23,20 @@
 - 세로 9:16(1080×1920). script.json 의 beat 별 scene_prompt 를 그대로 쓰되 위 원칙 동일.
 - 이미지→영상 클립용 모션 프롬프트는 "subtle camera push-in, stable composition, no new text, preserve subject" 수준의 작은 움직임만.
 
+## 스톡 검색어 (query)
+
+- 모든 항목에 영어 검색어 `query` 를 함께 쓴다. 무료 스톡(Pexels/Pixabay)을 쓰는 설치자는 이것으로 사진을 찾고, 생성 서비스가 실패해도 이것으로 대체한다.
+- 화면에 **보이는 것** 2~4단어: 사물 + 장소 + 시간대(`"laptop cafe morning"`, `"subway commuter phone"`). 추상어(success, idea, growth)·한국어·고유명사 금지.
+- 5장은 서로 다른 검색어로(같은 사진이 반복되지 않게). 스톡 사진은 한국 공간이 아닐 수 있으니 장소보다 사물 중심이 안전하다.
+- 숏츠 장면은 beat 별 `scene_query` 로 같은 규칙.
+
 ## 출력
 
 `images/prompts.json`
 ```json
-[{"file": "blog_1.jpg", "key_point": 1, "ratio": "16:9", "prompt": "…"}, …, {"file": "instagram_bg.jpg", "ratio": "3:4", "prompt": "…"}]
+[{"file": "blog_1.jpg", "key_point": 1, "ratio": "16:9", "prompt": "…", "query": "…"}, …, {"file": "instagram_bg.jpg", "ratio": "3:4", "prompt": "…", "query": "…"}]
 ```
-생성은 `osmu.py image --prompts images/prompts.json` 로 실행한다(서비스는 config `image_provider`).
+생성은 `osmu.py image --prompts images/prompts.json` 로 실행한다(서비스는 config `image_provider` — stock | gemini | pixverse). 스톡 사진의 출처는 `images/credits.json` 에 자동 기록된다.
 
 ## 검수 포인트
 

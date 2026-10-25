@@ -102,7 +102,7 @@ def auto_plan(script: dict, timing: dict, style: str, provider: str) -> dict:
         spans[u["beat"]][1] = u["end"]
     total = round(timing["total_s"], 2)
     shots, scenes = [], []
-    clip_quota = 3 if provider == "pixverse" else 0
+    clip_quota = 3 if provider in ("pixverse", "stock") else 0  # stock: 키가 없으면 make_assets 가 건너뛰고 정지 이미지로
     motions = ["push_in", "pan_left", "push_out", "pan_right"]
     for i, bid in enumerate(order):
         if bid not in spans:
@@ -123,7 +123,7 @@ def auto_plan(script: dict, timing: dict, style: str, provider: str) -> dict:
             use_clip = clip_quota > 0 and (end - start) >= 4 and i > 0
             if use_clip:
                 clip_quota -= 1
-            scenes.append({"id": bid, "file": f"scenes/{bid}.jpg", "prompt": b.get("scene_prompt", ""), "clip": use_clip,
+            scenes.append({"id": bid, "file": f"scenes/{bid}.jpg", "prompt": b.get("scene_prompt", ""), "query": b.get("scene_query", ""), "clip": use_clip,
                            "clip_prompt": "subtle camera push-in, stable composition, no new text, preserve subject"})
             src = {"type": "clip", "file": f"clips/{bid}.mp4"} if use_clip else {"type": "image", "file": f"scenes/{bid}.jpg", "motion": motions[i % 4]}
             shots.append({"id": bid, "start": round(start, 2), "end": round(end, 2), "source": src})

@@ -9,7 +9,8 @@ model: sonnet
 
 ## script 모드 (텍스트로만 돌려준다 — 팀장이 저장·윤문한다)
 입력: `<run>/05_blog.md`, `04_copy.md`, `02_persona.md`, `topic.json`(video_style), (있으면) `config/style-profile.local.md`.
-출력: `script.json` 내용 — duration_s, style, thumbnail_text, beats[](id, narration, caption, scene_prompt 또는 template/props, target_s), full_narration, tts_text(숫자를 한글로).
+출력: `script.json` 내용 — duration_s, style, thumbnail_text, beats[](id, narration, caption, scene_prompt + scene_query 또는 template/props, target_s), full_narration, tts_text(숫자를 한글로).
+- `scene_query`: 무료 스톡 영상·사진 검색어. 영어 구체 명사 2~4개(`rules/image-prompts.md` 스톡 검색어 절).
 - 내레이션 약 7자/초, 훅 3초, 핵심 2~3개, 환상 깨기 1문장, 마무리 CTA.
 - 블로그에 없는 사실 금지. 광고티 어휘 금지.
 

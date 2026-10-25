@@ -22,7 +22,7 @@ from datetime import datetime, time as dtime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import OUTPUT_DIR, ROOT, ensure_utf8_stdout, kst_now, load_config, load_env, read_json, write_json  # noqa: E402
+from common import OUTPUT_DIR, ROOT, ensure_utf8_stdout, kst_now, load_config, load_env, read_json, redact, write_json  # noqa: E402
 from run.claude_cmd import ClaudeCall, find_claude, run_claude  # noqa: E402
 import notify  # noqa: E402
 
@@ -255,7 +255,7 @@ def main(argv=None) -> int:
         set_run_state(date_str, "done" if status == "완료" else ("partial" if blog_done else "failed"), cost=cost)
         return 0 if blog_done else 1
     except Exception as e:  # 어떤 예외든 알림은 보낸다
-        set_run_state(date_str, "error", error=f"{type(e).__name__}: {e}"[:300])
+        set_run_state(date_str, "error", error=redact(f"{type(e).__name__}: {e}")[:300])
         send_notification(cfg, f"[OSMU] {date_str} 오류: {type(e).__name__}: {str(e)[:200]}")
         raise
     finally:
