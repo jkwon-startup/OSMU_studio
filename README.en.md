@@ -55,7 +55,18 @@ cd OSMU_studio
 claude        # then type /osmu-setup
 ```
 
+> **Windows: clone into an ASCII-only folder** such as `C:\OSMU_studio`. A non-ASCII user name (for example a Korean one) works, but keeping the repository itself outside such a path avoids trouble with some tools.
+
 `/osmu-setup` asks about your brand, where daily topics live (folder / spreadsheet / plan document), reference accounts, **free vs. paid services**, and notifications. Keys go into `.env` yourself (never into the chat). It then runs a connection test, one full trial run, and registers the daily schedule after you approve the result.
+
+## What the schedule needs (macOS and Windows)
+
+The run **starts** at 7:00 KST and takes 40–90 minutes. **The computer has to be on** — assume a closed or sleeping laptop will not be woken up.
+
+- Keep it plugged in, disable sleep, leave the lid open, stay logged in and online.
+- If it was off at 7:00, the run starts at the next full hour after you turn it on; after 12:00 that day is skipped.
+- If the computer sleeps or shuts down mid-run, the run is cut off. The next hourly call resumes it once (finished research and production steps are skipped; at most `schedule.max_attempts_per_day` attempts a day, default 2), then it notifies you and stops for the day.
+- Queue several days of topics. A day without a topic only sends a "no topic today" notification.
 
 ## Graceful fallbacks
 
@@ -73,7 +84,11 @@ Every fallback is recorded in `summary.json` and the notification.
 
 ## Customising shorts
 
-`config/config.local.json`: `shorts_aspect` (`9:16` / `1:1` / `16:9`), `shorts_transition` (`fade`, `dissolve`, `slide_left`, `slide_up`, `zoom`, `cut`), `edge_tts_voice`, `bgm`. Brand colours, caption colours and fonts live in `config/frame.local.md`. Motion-graphic scenes are plain HTML/CSS files in `templates/motion/` — see its README; preview with `python scripts/osmu.py motion-preview <name>`.
+`config/config.local.json`: `shorts_aspect` (`9:16` / `1:1` / `16:9`), `shorts_transition` (`fade`, `dissolve`, `slide_left`, `slide_up`, `zoom`, `cut`), `edge_tts_voice`, `bgm`. Brand colours, caption colours and fonts live in `config/frame.local.md`.
+
+**Image look (style, colour, lighting, places, props):** copy `config/visual.example.md` to `config/visual.local.md` and edit the five lines. From the next run, blog images, the Instagram background and shorts scenes follow it; check the notification ("비주얼 규칙 적용") and `images/prompts.json`. Fixed rules cannot be overridden: no text in images, no frontal face close-ups, aspect ratios. With free stock photos only places and props affect the search; colour, lighting and style apply when an image generation service (Pixverse, Gemini) is used.
+
+Motion-graphic scenes are plain HTML/CSS files in `templates/motion/` — see its README; preview with `python scripts/osmu.py motion-preview <name>`.
 
 ## Useful commands
 
@@ -83,6 +98,8 @@ Every fallback is recorded in `summary.json` and the notification.
 .venv/bin/python scripts/osmu.py selftest           # check connections
 .venv/bin/python scripts/osmu.py config-show        # effective settings
 ```
+
+`daily.py` exit codes: `0` done (or nothing to do) · `3` partial — the blog exists but images or the short failed · `1` failed · `2` no topic today · `4` another run is in progress (`--now` only). If a run was cut off (terminal closed, power loss), run the same command again; finished steps are skipped. The cost in the notification is the Claude total for research and production; external services are billed separately.
 
 Troubleshooting (Korean): `docs/TROUBLESHOOTING.md`. Licences and the open-source projects this borrows ideas from (MoneyPrinterTurbo, Pixelle-Video, HyperFrames): `NOTICE.md`.
 

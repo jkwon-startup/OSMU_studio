@@ -1,7 +1,7 @@
 """claude 실행 파일 탐색과 헤드리스 호출 — 양 OS 공통.
 
 원칙
-- argv 는 ASCII 만. 한글 프롬프트는 stdin 으로 UTF-8 전달한다 (Windows 콘솔 인코딩 문제 회피).
+- 한글 프롬프트는 stdin 으로 UTF-8 전달한다 (Windows 콘솔 인코딩 문제 회피). argv 에는 경로 말고 한글을 넣지 않는다.
 - 서브프로세스 환경에 .env 의 비밀값을 넣지 않는다.
 - 실행 파일 경로는 설치 때 확정해 config 에 저장하고, 없으면 PATH 와 기본 설치 위치를 찾는다.
 """
@@ -72,7 +72,10 @@ class ClaudeCall:
         if self.strict_mcp:
             a += ["--strict-mcp-config"]
         a += self.extra
-        bad = [x for x in a if not x.isascii()]
+        # 경로(claude 실행 파일·설정 파일)는 사용자명·설치 폴더가 한글일 수 있으므로 검사하지 않는다.
+        # shell 을 거치지 않고 리스트로 넘기므로 양 OS 모두 유니코드 경로가 그대로 전달된다.
+        paths = {claude_path, str(self.settings)} if self.settings else {claude_path}
+        bad = [x for x in a if not x.isascii() and x not in paths]
         if bad:
             raise ValueError(f"argv 에 ASCII 가 아닌 인자가 있음: {bad[:3]} — 프롬프트는 stdin 으로 넘길 것")
         return a

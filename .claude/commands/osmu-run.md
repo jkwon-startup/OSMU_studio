@@ -32,7 +32,7 @@ description: OSMU 팀장 — run 폴더의 주제·리서치로 페르소나→�
 ### 6. 병렬 ① — **한 메시지에서 세 팀원을 동시에** 부른다
 - `osmu-sns-editor` mode=both → `06_instagram.draft.md`, `07_threads.draft.md` 저장
 - `osmu-shorts` mode=script → `08_shorts/script.json` 저장
-- (scope=full) `osmu-visual` → 팀원이 직접 `images/` 를 만든다. 보고에서 실패 항목만 기록.
+- (scope=full) `osmu-visual` → 팀원이 직접 `images/` 를 만든다. 보고에서 실패 항목만 기록. 보고 첫 줄의 `개인 비주얼 규칙: 적용|없음` 은 `decisions.json` 의 `visual_rules` 에 그대로 적고, "적용"이면 summary 의 decision 끝에 ` · 비주얼 규칙 적용` 을 붙인다(설치자가 자기 규칙이 읽혔는지 알림에서 확인한다).
 
 ### 7. 윤문 ×3 (순차)
 - `06_instagram.draft.md` → `06_instagram.md` (장르 `blog`, 키워드 = 메인 키워드; frontmatter 는 윤문에서 제외하고 본문만)

@@ -7,6 +7,8 @@
   python3 scripts/run/daily.py --dry-run  # 주제 선택·명령 조립까지만
 
 흐름: 가드 → 잠금 → 주제 선택 → [세션 A 조사 ×3 병렬] → [세션 B 제작] → 알림 → 완료 표시
+종료 코드: 0 완료 / 1 실패 / 2 주제 없음 / 3 부분 완료(블로그는 있고 일부 실패) / 4 다른 실행 진행 중(--now)
+중단 복구: 잠금을 잡은 프로세스가 죽었으면 바로 회수하고, 끊긴 실행은 예약 호출이 하루 시도 상한 안에서 다시 시도한다.
 표준 라이브러리만 사용. 비밀값은 알림 전송 함수에만 전달하고 로그·서브프로세스 환경에는 넣지 않는다.
 """
 from __future__ import annotations
@@ -22,7 +24,7 @@ from datetime import datetime, time as dtime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import OUTPUT_DIR, ROOT, ensure_utf8_stdout, kst_now, load_config, load_env, read_json, redact, write_json  # noqa: E402
+from common import IS_WINDOWS, OUTPUT_DIR, ROOT, ensure_utf8_stdout, kst_now, load_config, load_env, read_json, redact, write_json  # noqa: E402
 from run.claude_cmd import ClaudeCall, find_claude, run_claude  # noqa: E402
 import notify  # noqa: E402
 
@@ -32,6 +34,14 @@ STALE_LOCK_S = 3 * 3600
 RESEARCH_PERSPECTIVES = ["market", "youtube", "blog"]
 RESEARCH_TIMEOUT_S = 15 * 60
 PRODUCE_TIMEOUT_S = 2 * 3600
+RESEARCH_FAIL_MARK = "(조사 실패"
+
+# 종료 코드 — 스케줄러의 "마지막 실행 결과"에 그대로 보인다.
+EXIT_OK = 0        # 완료 (또는 할 일 없음: 시간 창 밖·오늘 이미 실행)
+EXIT_FAILED = 1    # 실패 — 블로그도 만들지 못함, 또는 사전 점검 실패
+EXIT_NO_TOPIC = 2  # 오늘 주제 없음
+EXIT_PARTIAL = 3   # 부분 완료 — 블로그는 있고 일부(이미지·숏츠 등) 실패
+EXIT_BUSY = 4      # --now 로 불렀는데 다른 실행이 진행 중
 
 
 # ---------- 가드 ----------
@@ -41,29 +51,85 @@ def in_window(now: datetime, start: str = "07:00", end: str = "12:00") -> bool:
     return s <= now.time() < e
 
 
+def run_entry(date_str: str) -> dict:
+    return (read_json(RUNS_STATE, {}) or {}).get(date_str, {})
+
+
 def already_ran(date_str: str) -> bool:
-    state = read_json(RUNS_STATE, {}) or {}
-    return state.get(date_str, {}).get("status") in ("done", "partial", "running")
+    """오늘 더 할 일이 없는 상태인가. `running` 은 여기서 막지 않는다 — 실제로 실행 중인지는 잠금이 판단하고,
+    잠금이 풀려 있는데 running 이면 강제 종료로 중단된 실행이므로 다시 시도해야 한다."""
+    return run_entry(date_str).get("status") in ("done", "partial", "interrupted")
 
 
 def set_run_state(date_str: str, status: str, **extra) -> None:
     state = read_json(RUNS_STATE, {}) or {}
-    state[date_str] = {"status": status, "at": kst_now().isoformat(), **extra}
+    prev = state.get(date_str, {})
+    entry = {"status": status, "at": kst_now().isoformat(), **extra}
+    if "attempts" not in entry and "attempts" in prev:  # 하루 시도 횟수는 상태가 바뀌어도 이어 간다
+        entry["attempts"] = prev["attempts"]
+    state[date_str] = entry
     write_json(RUNS_STATE, state)
 
 
+def exit_code_for(status: str, blog_done: bool) -> int:
+    """summary.json 의 status 와 블로그 완성 여부 → 종료 코드."""
+    if not blog_done:
+        return EXIT_FAILED
+    return EXIT_OK if status == "완료" else EXIT_PARTIAL
+
+
+def pid_alive(pid: int) -> bool:
+    """그 번호의 프로세스가 살아 있는가. Windows 의 os.kill 은 대상을 종료시키므로 쓰지 않는다."""
+    if pid <= 0:
+        return False
+    if IS_WINDOWS:
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return ctypes.get_last_error() == 5  # 접근 거부 = 존재는 한다
+        code = wintypes.DWORD()
+        ok = k32.GetExitCodeProcess(handle, ctypes.byref(code))
+        k32.CloseHandle(handle)
+        return bool(ok) and code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 class Lock:
-    """mkdir 원자성으로 중복 실행 방지 (양 OS 동일). 오래된 잠금은 stale 로 보고 회수한다."""
+    """mkdir 원자성으로 중복 실행 방지 (양 OS 동일).
+    잠금을 잡은 프로세스가 죽었으면(터미널 닫기·강제 종료) 바로 회수하고, 번호를 알 수 없으면 오래된 것만 회수한다."""
     def __init__(self, path: Path = LOCK_DIR, stale_s: int = STALE_LOCK_S):
         self.path, self.stale_s = path, stale_s
+
+    def holder_pid(self) -> int | None:
+        try:
+            return int((self.path / "pid").read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            return None
 
     def acquire(self) -> bool:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             self.path.mkdir()
         except FileExistsError:
-            age = time.time() - self.path.stat().st_mtime
-            if age < self.stale_s:
+            try:
+                age = time.time() - self.path.stat().st_mtime
+            except OSError:
+                return False
+            holder = self.holder_pid()
+            dead = holder is not None and holder != os.getpid() and not pid_alive(holder)
+            if not dead and age < self.stale_s:
                 return False
             try:
                 (self.path / "pid").unlink(missing_ok=True)
@@ -104,12 +170,32 @@ def research_prompt(topic: dict, perspective: str, cfg: dict) -> str:
 """
 
 
-def run_research(topic: dict, run_dir: Path, cfg: dict, claude_path: str) -> dict[str, bool]:
+def research_reusable(path: Path) -> bool:
+    """이미 성공한 조사 노트인가 — 중단 뒤 다시 돌릴 때 같은 조사에 비용을 또 쓰지 않는다."""
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    return bool(text) and not text.startswith(RESEARCH_FAIL_MARK)
+
+
+def _cost_of(data) -> float:
+    try:
+        return float((data or {}).get("total_cost_usd") or 0)
+    except (AttributeError, TypeError, ValueError):
+        return 0.0
+
+
+def run_research(topic: dict, run_dir: Path, cfg: dict, claude_path: str, costs: dict | None = None) -> dict[str, bool]:
+    """관점별 조사. costs 를 넘기면 관점별 Claude 비용(USD)을 채운다."""
     out_dir = run_dir / "01_research"
     out_dir.mkdir(parents=True, exist_ok=True)
     results: dict[str, bool] = {}
 
     def worker(persp: str):
+        if research_reusable(out_dir / f"{persp}.md"):
+            results[persp] = True
+            return
         call = ClaudeCall(prompt=research_prompt(topic, persp, cfg), agent="osmu-researcher",
                           allowed_tools=["WebSearch", "WebFetch"], disallowed_tools=["Bash", "Edit", "Write", "Agent"],
                           max_budget_usd=float(cfg.get("research_budget_usd", 2)))
@@ -117,8 +203,10 @@ def run_research(topic: dict, run_dir: Path, cfg: dict, claude_path: str) -> dic
         data = res.json() or {}
         text = data.get("result") if isinstance(data, dict) else None
         ok = res.ok and bool(text)
-        (out_dir / f"{persp}.md").write_text(text or f"(조사 실패: exit {res.returncode}, timeout={res.timed_out})\n", encoding="utf-8")
+        (out_dir / f"{persp}.md").write_text(text or f"{RESEARCH_FAIL_MARK}: exit {res.returncode}, timeout={res.timed_out})\n", encoding="utf-8")
         results[persp] = ok
+        if costs is not None:
+            costs[persp] = _cost_of(data)
 
     threads = [threading.Thread(target=worker, args=(p,), daemon=True) for p in RESEARCH_PERSPECTIVES]
     for t in threads:
@@ -150,14 +238,16 @@ def write_unattended_settings(cfg: dict) -> Path:
     return out
 
 
-def run_produce(run_dir: Path, cfg: dict, claude_path: str, attempt: int) -> dict | None:
+def run_produce(run_dir: Path, cfg: dict, claude_path: str, attempt: int) -> tuple[dict | None, float]:
+    """제작 세션 1회. (성공 시 결과 JSON 아니면 None, 이 호출의 Claude 비용) — 실패한 호출도 비용은 센다."""
     settings = write_unattended_settings(cfg)
     rel = run_dir.relative_to(ROOT).as_posix()
     call = ClaudeCall(prompt=f"/osmu-run run={rel} python={Path(resolve_python(cfg)).as_posix()}", settings=settings,
                       disallowed_tools=["WebSearch", "WebFetch"],
                       max_budget_usd=float(cfg.get("max_budget_usd", 15)))
     res = run_claude(call, claude_path, PRODUCE_TIMEOUT_S, run_dir / f"produce_attempt{attempt}.log")
-    return res.json() if res.ok else None
+    data = res.json()
+    return (data if res.ok else None), _cost_of(data)
 
 
 # ---------- 사전 점검 (돈·시간을 쓰기 전에) ----------
@@ -204,7 +294,7 @@ def build_summary_text(date_str: str, topic: dict | None, run_dir: Path, elapsed
         parts.append("선택: " + summary["decision"])
     meta = f"{elapsed_s/60:.0f}분"
     if cost is not None:
-        meta += f" · 추정 ${cost:.2f}"
+        meta += f" · 추정 ${cost:.2f} (Claude 조사+제작 합계, 외부 서비스 별도)"
     parts.append(meta)
     parts.append(f"폴더: {run_dir}")
     if note:
@@ -239,34 +329,58 @@ def main(argv=None) -> int:
 
     lock = Lock()
     if not lock.acquire():
-        print("다른 실행이 진행 중 — 종료")
-        return 0
+        if not a.now:
+            print("다른 실행이 진행 중 — 종료")
+            return EXIT_OK
+        print(f"다른 실행이 진행 중입니다(프로세스 {lock.holder_pid() or '번호 미상'}) — 지금은 시작하지 않습니다.\n"
+              f"  · 그 실행이 끝나면 알림이 옵니다. 진행 상황: {OUTPUT_DIR / 'runs' / date_str}\n"
+              "  · 멈춘 것 같으면 그 터미널에서 Ctrl+C 로 끝낸 뒤 이 명령을 다시 실행하세요"
+              "(끝난 실행의 잠금은 자동으로 풀립니다).")
+        return EXIT_BUSY
     t0 = time.time()
     run_dir = OUTPUT_DIR / "runs" / date_str
     topic = None
     stage = "사전 점검"
     try:
+        # 잠금을 잡았는데 상태가 running 이면 앞선 실행이 중간에 끊긴 것이다(터미널 닫기·전원·강제 종료).
+        prev = run_entry(date_str)
+        attempts = int(prev.get("attempts", 0) or 0)
+        interrupted = prev.get("status") == "running"
+        if interrupted:
+            print(f"이전 실행이 중간에 끊겼습니다({prev.get('at', '시각 미상')}) — 끝난 단계는 건너뛰고 이어서 다시 시도합니다.")
+        max_attempts = int(sched.get("max_attempts_per_day", 2))
+        if not a.now and not a.dry_run and attempts >= max_attempts:
+            # 예약 호출은 하루 시도 횟수를 넘기지 않는다 — 같은 문제로 매시간 비용을 쓰지 않게.
+            if interrupted:
+                set_run_state(date_str, "interrupted", error=f"실행이 {attempts}회 중단됨")
+                send_notification(cfg, f"[OSMU] {date_str} 실행이 {attempts}회 중간에 끊겨 오늘 자동 재시도를 멈춥니다 — "
+                                       "컴퓨터가 잠들거나 꺼지지 않는지 확인한 뒤 daily.py --now 로 다시 실행하세요 | "
+                                       f"폴더: {run_dir}")
+            return EXIT_FAILED
+
         claude_path = find_claude(cfg.get("claude_path"))
         if not claude_path:
             set_run_state(date_str, "error", stage=stage, error="claude 실행 파일 없음")
             send_notification(cfg, f"[OSMU] {date_str} 실패(사전 점검): claude 실행 파일을 찾을 수 없음 — "
                                    "Claude Code 설치 확인 후 /osmu-setup 으로 claude_path 를 다시 저장하세요")
-            return 1
+            return EXIT_FAILED
         problems = preflight(cfg)
         if problems:
             set_run_state(date_str, "error", stage=stage, error=" / ".join(problems)[:300])
             send_notification(cfg, f"[OSMU] {date_str} 시작 전 점검 실패 — 비용은 쓰지 않았습니다 | " + " | ".join(problems))
             print("사전 점검 실패:\n  " + "\n  ".join(problems))
-            return 1
+            return EXIT_FAILED
 
         stage = "주제 선택"
 
         from topics import select
         topic = read_json(run_dir / "topic.json") if (run_dir / "topic.json").exists() else select.select_topic(cfg)
         if not topic:
+            if prev.get("status") != "no_topic":  # 매시 정각에 다시 확인하되 알림은 하루 한 번
+                send_notification(cfg, f"[OSMU] {date_str} 오늘 주제 없음 — 주제 소스를 확인하세요"
+                                       "(12:00 전에 주제를 넣으면 다음 정각에 실행됩니다)")
             set_run_state(date_str, "no_topic")
-            send_notification(cfg, f"[OSMU] {date_str} 오늘 주제 없음 — 주제 소스를 확인하세요")
-            return 2
+            return EXIT_NO_TOPIC
         write_json(run_dir / "topic.json", topic)
         print(f"주제: {topic['title']} ({topic['video_style']})")
         if a.dry_run:
@@ -275,20 +389,22 @@ def main(argv=None) -> int:
             print(" ".join(ClaudeCall(prompt="", settings=write_unattended_settings(cfg)).argv(claude_path)))
             return 0
 
-        set_run_state(date_str, "running", topic=topic["title"])
+        set_run_state(date_str, "running", topic=topic["title"], attempts=attempts + 1)
         stage = "조사"
+        research_costs: dict[str, float] = {}
         if not (a.skip_research and (run_dir / "01_research").exists()):
-            r = run_research(topic, run_dir, cfg, claude_path)
+            r = run_research(topic, run_dir, cfg, claude_path, research_costs)
             print("조사:", r)
 
         stage = "제작"
-        result = run_produce(run_dir, cfg, claude_path, 1)
+        result, produce_cost = run_produce(run_dir, cfg, claude_path, 1)
         if result is None or (result.get("is_error") and not (run_dir / "summary.json").exists()):
             print("제작 세션 실패 — 1회 재시도")
-            result = run_produce(run_dir, cfg, claude_path, 2)
+            result, retry_cost = run_produce(run_dir, cfg, claude_path, 2)
+            produce_cost += retry_cost
 
         stage = "알림"
-        cost = (result or {}).get("total_cost_usd")
+        cost = round(sum(research_costs.values()) + produce_cost, 2)  # 이번 실행의 조사 + 제작(재시도 포함)
         summary = read_json(run_dir / "summary.json", {}) or {}
         status = summary.get("status", "실패")
         text = build_summary_text(date_str, topic, run_dir, time.time() - t0, cost)
@@ -297,8 +413,9 @@ def main(argv=None) -> int:
 
         blog_done = any("블로그" in x for x in summary.get("completed", []))
         select.mark(topic["source_ref"], "done" if blog_done else "retry")
-        set_run_state(date_str, "done" if status == "완료" else ("partial" if blog_done else "failed"), cost=cost)
-        return 0 if blog_done else 1
+        code = exit_code_for(status, blog_done)
+        set_run_state(date_str, {EXIT_OK: "done", EXIT_PARTIAL: "partial"}.get(code, "failed"), cost=cost)
+        return code
     except Exception as e:  # 어떤 예외든 알림은 보낸다
         set_run_state(date_str, "error", stage=stage, error=redact(f"{type(e).__name__}: {e}")[:300])
         send_notification(cfg, f"[OSMU] {date_str} 오류(단계: {stage}): {type(e).__name__}: {str(e)[:200]} | "

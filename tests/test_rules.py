@@ -39,6 +39,17 @@ class RulesTest(unittest.TestCase):
         self.assertGreaterEqual(len(words), 15)
         self.assertIn("프리미엄", words)
 
+    def test_personal_visual_rules_are_wired(self):
+        """개인 비주얼 규칙 파일(config/visual.local.md)을 이미지·숏츠 팀원이 읽도록 연결돼 있고, git 에는 올라가지 않는다."""
+        for agent in ("osmu-visual.md", "osmu-shorts.md"):
+            text = (ROOT / ".claude" / "agents" / agent).read_text(encoding="utf-8")
+            self.assertIn("config/visual.local.md", text, f"{agent} 가 개인 비주얼 규칙을 읽지 않음")
+        self.assertIn("config/visual.local.md", (RULES / "image-prompts.md").read_text(encoding="utf-8"))
+        example = (ROOT / "config" / "visual.example.md").read_text(encoding="utf-8")
+        self.assertIn("visual.local.md", example)
+        self.assertGreaterEqual(len([ln for ln in example.splitlines() if ln.startswith("- ")]), 5)
+        self.assertIn("config/*.local.*", (ROOT / ".gitignore").read_text(encoding="utf-8"))
+
     def test_no_personal_paths_in_rules(self):
         for p in RULES.rglob("*.md"):
             self.assertNotRegex(p.read_text(encoding="utf-8"), r"/Users/[A-Za-z]", f"{p} 에 개인 경로")
