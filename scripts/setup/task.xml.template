@@ -29,7 +29,7 @@
     <StartWhenAvailable>true</StartWhenAvailable>
     <RunOnlyIfNetworkAvailable>true</RunOnlyIfNetworkAvailable>
     <WakeToRun>true</WakeToRun>
-    <ExecutionTimeLimit>PT3H</ExecutionTimeLimit>
+    <ExecutionTimeLimit>PT5H</ExecutionTimeLimit>
     <Enabled>true</Enabled>
     <Hidden>false</Hidden>
   </Settings>

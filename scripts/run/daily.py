@@ -35,6 +35,8 @@ RESEARCH_PERSPECTIVES = ["market", "youtube", "blog"]
 RESEARCH_TIMEOUT_S = 15 * 60
 PRODUCE_TIMEOUT_S = 2 * 3600
 RESEARCH_FAIL_MARK = "(조사 실패"
+# 한 번의 실행이 살아 있을 수 있는 최대 시간: 조사 + 제작 2회(재시도) + 여유 30분
+MAX_RUN_S = RESEARCH_TIMEOUT_S + 60 + 2 * PRODUCE_TIMEOUT_S + 30 * 60
 
 # 종료 코드 — 스케줄러의 "마지막 실행 결과"에 그대로 보인다.
 EXIT_OK = 0        # 완료 (또는 할 일 없음: 시간 창 밖·오늘 이미 실행)
@@ -65,8 +67,9 @@ def set_run_state(date_str: str, status: str, **extra) -> None:
     state = read_json(RUNS_STATE, {}) or {}
     prev = state.get(date_str, {})
     entry = {"status": status, "at": kst_now().isoformat(), **extra}
-    if "attempts" not in entry and "attempts" in prev:  # 하루 시도 횟수는 상태가 바뀌어도 이어 간다
-        entry["attempts"] = prev["attempts"]
+    for keep in ("attempts", "cost_day"):  # 하루 시도 횟수·누적 비용은 상태가 바뀌어도 이어 간다
+        if keep not in entry and keep in prev:
+            entry[keep] = prev[keep]
     state[date_str] = entry
     write_json(RUNS_STATE, state)
 
@@ -108,9 +111,11 @@ def pid_alive(pid: int) -> bool:
 
 class Lock:
     """mkdir 원자성으로 중복 실행 방지 (양 OS 동일).
-    잠금을 잡은 프로세스가 죽었으면(터미널 닫기·강제 종료) 바로 회수하고, 번호를 알 수 없으면 오래된 것만 회수한다."""
-    def __init__(self, path: Path = LOCK_DIR, stale_s: int = STALE_LOCK_S):
+    잠금을 잡은 프로세스가 죽었으면(터미널 닫기·강제 종료) 바로 회수하고, 살아 있으면 유지하며,
+    번호를 알 수 없으면 오래된 것(stale_s)만 회수한다."""
+    def __init__(self, path: Path = LOCK_DIR, stale_s: int = STALE_LOCK_S, max_alive_s: int | None = None):
         self.path, self.stale_s = path, stale_s
+        self.max_alive_s = MAX_RUN_S if max_alive_s is None else max_alive_s
 
     def holder_pid(self) -> int | None:
         try:
@@ -128,8 +133,16 @@ class Lock:
             except OSError:
                 return False
             holder = self.holder_pid()
-            dead = holder is not None and holder != os.getpid() and not pid_alive(holder)
-            if not dead and age < self.stale_s:
+            if holder is None:
+                reclaim = age >= self.stale_s        # 번호를 모르면 시간으로만 판단
+            elif pid_alive(holder):
+                # 살아 있는 실행의 잠금은 오래됐어도 뺏지 않는다(같은 폴더에 두 실행이 쓰게 된다).
+                # 다만 어떤 실행도 max_alive_s 보다 오래 살 수 없으므로, 그보다 오래된 잠금의 "살아 있는 번호"는
+                # 죽은 실행의 번호를 다른 프로그램이 물려받은 것이다.
+                reclaim = age >= self.max_alive_s
+            else:
+                reclaim = True                       # 잡은 프로세스가 죽었다 — 바로 회수
+            if not reclaim:
                 return False
             try:
                 (self.path / "pid").unlink(missing_ok=True)
@@ -170,13 +183,19 @@ def research_prompt(topic: dict, perspective: str, cfg: dict) -> str:
 """
 
 
-def research_reusable(path: Path) -> bool:
-    """이미 성공한 조사 노트인가 — 중단 뒤 다시 돌릴 때 같은 조사에 비용을 또 쓰지 않는다."""
+def research_meta_path(md_path: Path) -> Path:
+    return md_path.with_suffix(".meta.json")
+
+
+def research_reusable(md_path: Path) -> bool:
+    """이미 **성공이 확인된** 조사 노트인가 — 중단 뒤 다시 돌릴 때 같은 조사에 비용을 또 쓰지 않는다.
+    노트 내용만으로는 판단하지 않는다(실패한 호출도 오류 설명 문장을 돌려줄 수 있다). 성공 기록(.meta.json)이 있어야 한다."""
     try:
-        text = path.read_text(encoding="utf-8").strip()
-    except OSError:
+        meta = read_json(research_meta_path(md_path), {}) or {}
+        text = md_path.read_text(encoding="utf-8").strip()
+    except (OSError, ValueError):
         return False
-    return bool(text) and not text.startswith(RESEARCH_FAIL_MARK)
+    return meta.get("ok") is True and bool(text) and not text.startswith(RESEARCH_FAIL_MARK)
 
 
 def _cost_of(data) -> float:
@@ -202,8 +221,14 @@ def run_research(topic: dict, run_dir: Path, cfg: dict, claude_path: str, costs:
         res = run_claude(call, claude_path, RESEARCH_TIMEOUT_S, out_dir / f"{persp}.log")
         data = res.json() or {}
         text = data.get("result") if isinstance(data, dict) else None
-        ok = res.ok and bool(text)
-        (out_dir / f"{persp}.md").write_text(text or f"{RESEARCH_FAIL_MARK}: exit {res.returncode}, timeout={res.timed_out})\n", encoding="utf-8")
+        is_error = bool(data.get("is_error")) if isinstance(data, dict) else True
+        ok = res.ok and bool(text) and not is_error
+        md = out_dir / f"{persp}.md"
+        # 실패한 호출이 돌려준 문장(한도 초과 안내 등)은 조사 근거가 아니다 — 노트에는 실패 표시만 남기고 원문은 .log 에 있다.
+        md.write_text(text if ok else f"{RESEARCH_FAIL_MARK}: exit {res.returncode}, timeout={res.timed_out}, "
+                                      f"is_error={is_error} — 자세한 내용은 {persp}.log)\n", encoding="utf-8")
+        write_json(research_meta_path(md), {"ok": ok, "at": kst_now().isoformat(), "exit": res.returncode,
+                                            "timed_out": res.timed_out, "is_error": is_error})
         results[persp] = ok
         if costs is not None:
             costs[persp] = _cost_of(data)
@@ -294,7 +319,7 @@ def build_summary_text(date_str: str, topic: dict | None, run_dir: Path, elapsed
         parts.append("선택: " + summary["decision"])
     meta = f"{elapsed_s/60:.0f}분"
     if cost is not None:
-        meta += f" · 추정 ${cost:.2f} (Claude 조사+제작 합계, 외부 서비스 별도)"
+        meta += f" · Claude 비용 ${cost:.2f} (이번 실행에서 확인된 조사+제작, 외부 서비스 별도)"
     parts.append(meta)
     parts.append(f"폴더: {run_dir}")
     if note:
@@ -404,17 +429,23 @@ def main(argv=None) -> int:
             produce_cost += retry_cost
 
         stage = "알림"
-        cost = round(sum(research_costs.values()) + produce_cost, 2)  # 이번 실행의 조사 + 제작(재시도 포함)
+        # 이번 실행에서 Claude 가 비용을 알려 준 호출만 더한 값이다(조사 + 제작, 재시도 포함).
+        # 끊긴 실행·비용을 돌려주지 않은 호출은 들어가지 않으므로 "확인된" 비용이고, 0 이면 모른다는 뜻으로 표시하지 않는다.
+        confirmed = round(sum(research_costs.values()) + produce_cost, 2)
+        cost = confirmed if confirmed > 0 else None
+        earlier = float(prev.get("cost_day", 0) or 0)  # 오늘 앞선 실행들에서 확인된 비용
+        cost_day = round(earlier + confirmed, 2)
         summary = read_json(run_dir / "summary.json", {}) or {}
         status = summary.get("status", "실패")
-        text = build_summary_text(date_str, topic, run_dir, time.time() - t0, cost)
+        text = build_summary_text(date_str, topic, run_dir, time.time() - t0, cost,
+                                  note=f"오늘 확인된 누적 ${cost_day:.2f}" if earlier > 0 else "")
         ok, detail = send_notification(cfg, text)
         print(text, "\n알림:", ok, detail)
 
         blog_done = any("블로그" in x for x in summary.get("completed", []))
         select.mark(topic["source_ref"], "done" if blog_done else "retry")
         code = exit_code_for(status, blog_done)
-        set_run_state(date_str, {EXIT_OK: "done", EXIT_PARTIAL: "partial"}.get(code, "failed"), cost=cost)
+        set_run_state(date_str, {EXIT_OK: "done", EXIT_PARTIAL: "partial"}.get(code, "failed"), cost=cost, cost_day=cost_day)
         return code
     except Exception as e:  # 어떤 예외든 알림은 보낸다
         set_run_state(date_str, "error", stage=stage, error=redact(f"{type(e).__name__}: {e}")[:300])

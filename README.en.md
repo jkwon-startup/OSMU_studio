@@ -99,7 +99,7 @@ Motion-graphic scenes are plain HTML/CSS files in `templates/motion/` — see it
 .venv/bin/python scripts/osmu.py config-show        # effective settings
 ```
 
-`daily.py` exit codes: `0` done (or nothing to do) · `3` partial — the blog exists but images or the short failed · `1` failed · `2` no topic today · `4` another run is in progress (`--now` only). If a run was cut off (terminal closed, power loss), run the same command again; finished steps are skipped. The cost in the notification is the Claude total for research and production; external services are billed separately.
+`daily.py` exit codes: `0` done (or nothing to do) · `3` partial — the blog exists but images or the short failed · `1` failed · `2` no topic today · `4` another run is in progress (`--now` only). If a run was cut off (terminal closed, power loss), run the same command again; finished steps are skipped. The cost in the notification is what Claude reported for that run's research and production calls; an interrupted run or a call that returned no cost is not included, and external services are billed separately. `max_budget_usd` caps **one production session**, not the whole day: each of the three research sessions has its own `research_budget_usd` (default 2), and a production retry or a re-run spends again.
 
 Troubleshooting (Korean): `docs/TROUBLESHOOTING.md`. Licences and the open-source projects this borrows ideas from (MoneyPrinterTurbo, Pixelle-Video, HyperFrames): `NOTICE.md`.
 

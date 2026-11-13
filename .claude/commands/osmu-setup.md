@@ -67,7 +67,7 @@ EOF
 사용자가 `.env` 를 채웠다고 하면 `<python> scripts/osmu.py selftest` 를 실행해 결과를 보여준다. FAIL 은 원인별로 안내(키 오류 / 결제 / 한도). 유료 서비스를 골랐다면 비용이 드는 호출(이미지 1장, TTS 1문장)이 포함됨을 미리 말한다(무료 경로는 비용 없음). SKIP 은 "그 서비스를 안 쓰면 괜찮다"고 설명한다.
 
 ## 8. 무인 권한 설명과 동의
-`config/unattended.template.json` 을 읽어 **쉬운 말로** 설명한다: 매일 아침 세션은 이 저장소 읽기, `scripts/osmu.py` 실행, `output/` 쓰기, 윤문 플러그인, 팀원 호출만 할 수 있고, `.env` 읽기·웹 도구·curl·git·rm·scripts/config 수정은 막혀 있다. 하루 비용 상한(`max_budget_usd`)도 함께. "이대로 진행할까요?" 동의를 받는다. 동의하지 않으면 여기서 멈춘다.
+`config/unattended.template.json` 을 읽어 **쉬운 말로** 설명한다: 매일 아침 세션은 이 저장소 읽기, `scripts/osmu.py` 실행, `output/` 쓰기, 윤문 플러그인, 팀원 호출만 할 수 있고, `.env` 읽기·웹 도구·curl·git·rm·scripts/config 수정은 막혀 있다. 비용도 정확히 설명한다: `max_budget_usd` 는 **제작 세션 1회의 Claude 비용 상한**이다(하루 총예산이 아니다). 조사 세션 3개는 각각 `research_budget_usd`(기본 2)가 따로 걸리고, 제작이 실패해 한 번 재시도하면 상한도 한 번 더 적용되며, 끊긴 실행을 다시 돌리면 그만큼 더 든다. Pixverse·Gemini·ElevenLabs 같은 외부 서비스 요금은 여기에 포함되지 않는다. "이대로 진행할까요?" 동의를 받는다. 동의하지 않으면 여기서 멈춘다.
 
 ## 9. 테스트 1회
 `<python> scripts/run/daily.py --now` 를 실행한다(30~90분, 비용 발생). 실행 중에는 이 터미널을 닫거나 컴퓨터를 재우지 말라고 미리 말한다.

@@ -1,6 +1,7 @@
 """예약 실행기의 결정적 부분 테스트 — 시간 창, 잠금, claude argv 조립, 알림 문구. 네트워크·LLM 없음."""
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -37,10 +38,23 @@ class LockTest(unittest.TestCase):
             self.assertFalse(daily.Lock(Path(d) / ".lock", stale_s=60).acquire())  # 두 번째는 실패
             lock.release()
             self.assertTrue(lock.acquire())
-            # stale: mtime 을 과거로 돌리면 회수된다
+
+    def test_live_holder_kept_even_when_old(self):
+        """살아 있는 실행의 잠금은 stale 시간이 지나도 뺏지 않는다 — 긴 실행 도중 다음 정각 호출이 끼어들지 않게."""
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / ".lock"
+            self.assertTrue(daily.Lock(path, stale_s=60, max_alive_s=600).acquire())  # 이 테스트 프로세스가 잡는다
             old = time.time() - 120
-            os.utime(Path(d) / ".lock", (old, old))
-            self.assertTrue(daily.Lock(Path(d) / ".lock", stale_s=60).acquire())
+            os.utime(path, (old, old))
+            self.assertFalse(daily.Lock(path, stale_s=60, max_alive_s=600).acquire())
+            # 어떤 실행도 살아 있을 수 없는 시간이 지났다면 번호가 다른 프로그램에 재사용된 것 — 회수한다
+            older = time.time() - 700
+            os.utime(path, (older, older))
+            self.assertTrue(daily.Lock(path, stale_s=60, max_alive_s=600).acquire())
+
+    def test_max_run_covers_longest_possible_run(self):
+        self.assertGreater(daily.MAX_RUN_S, daily.RESEARCH_TIMEOUT_S + 2 * daily.PRODUCE_TIMEOUT_S)
+        self.assertGreater(daily.MAX_RUN_S, daily.STALE_LOCK_S)
 
     def test_pid_alive(self):
         self.assertTrue(daily.pid_alive(os.getpid()))
@@ -167,7 +181,8 @@ class MainRecoveryTest(unittest.TestCase):
         self.assertEqual(daily.main([]), daily.EXIT_OK)
         entry = daily.run_entry(self.DATE)
         self.assertEqual((entry["status"], entry["attempts"], entry["cost"]), ("done", 1, 6.0))
-        self.assertIn("추정 $6.00", self.notes[-1])
+        self.assertIn("Claude 비용 $6.00", self.notes[-1])
+        self.assertNotIn("누적", self.notes[-1])  # 오늘 첫 실행이면 누적 표시는 없다
         self.assertFalse(self.lock_path.exists())
         self.assertEqual(daily.main([]), daily.EXIT_OK)  # 같은 날 다음 정각 — 다시 돌지 않는다
         self.assertEqual(self.produced, 1)
@@ -202,6 +217,22 @@ class MainRecoveryTest(unittest.TestCase):
         self.assertEqual(daily.main(["--now"]), daily.EXIT_OK)  # 수동 실행은 상한과 무관
         self.assertEqual(self.produced, 1)
 
+    def test_cost_accumulates_across_runs_of_the_day(self):
+        self.summary = {"status": "실패", "completed": [], "failed": ["블로그"]}
+        self.assertEqual(daily.main([]), daily.EXIT_FAILED)
+        self.summary = {"status": "완료", "completed": ["블로그 1,800자", "인스타", "쓰레드"], "failed": []}
+        self.assertEqual(daily.main([]), daily.EXIT_OK)
+        entry = daily.run_entry(self.DATE)
+        self.assertEqual((entry["cost"], entry["cost_day"], entry["attempts"]), (6.0, 12.0, 2))
+        self.assertIn("오늘 확인된 누적 $12.00", self.notes[-1])
+
+    def test_unknown_cost_is_not_shown_as_zero(self):
+        with mock.patch.object(daily, "run_research", lambda *a, **k: {}), \
+             mock.patch.object(daily, "run_produce", lambda run_dir, *a: (daily.write_json(run_dir / "summary.json", self.summary), ({}, 0.0))[1]):
+            self.assertEqual(daily.main([]), daily.EXIT_OK)
+        self.assertNotIn("$", self.notes[-1])
+        self.assertIsNone(daily.run_entry(self.DATE)["cost"])
+
     def test_failed_runs_also_respect_cap(self):
         daily.set_run_state(self.DATE, "failed", attempts=2)
         self.assertEqual(daily.main([]), daily.EXIT_FAILED)
@@ -224,16 +255,53 @@ class MainRecoveryTest(unittest.TestCase):
 
 
 class ResearchReuseTest(unittest.TestCase):
-    def test_reusable_research(self):
+    def test_reusable_only_with_success_record(self):
         with tempfile.TemporaryDirectory() as d:
-            ok, bad, empty = Path(d) / "market.md", Path(d) / "blog.md", Path(d) / "youtube.md"
+            ok, no_meta, bad, empty = (Path(d) / n for n in ("market.md", "legacy.md", "blog.md", "youtube.md"))
             ok.write_text("# 시장 조사\n- 근거 …\n", encoding="utf-8")
-            bad.write_text("(조사 실패: exit 1, timeout=False)\n", encoding="utf-8")
+            daily.write_json(daily.research_meta_path(ok), {"ok": True})
+            no_meta.write_text("# 내용은 있지만 성공 기록이 없다\n", encoding="utf-8")
+            bad.write_text("사용량 한도에 도달했습니다. 잠시 후 다시 시도하세요.\n", encoding="utf-8")
+            daily.write_json(daily.research_meta_path(bad), {"ok": False})
             empty.write_text("", encoding="utf-8")
+            daily.write_json(daily.research_meta_path(empty), {"ok": True})
             self.assertTrue(daily.research_reusable(ok))
+            self.assertFalse(daily.research_reusable(no_meta))
             self.assertFalse(daily.research_reusable(bad))
             self.assertFalse(daily.research_reusable(empty))
             self.assertFalse(daily.research_reusable(Path(d) / "none.md"))
+
+    def _run(self, run_dir: Path, responses: dict, calls: list) -> dict:
+        from run.claude_cmd import ClaudeResult
+
+        def fake_run_claude(call, claude_path, timeout_s, log_path):
+            persp = log_path.stem
+            calls.append(persp)
+            code, payload = responses[persp]
+            return ClaudeResult(code, json.dumps(payload, ensure_ascii=False), "", 1.0)
+
+        costs: dict = {}
+        with mock.patch.object(daily, "run_claude", fake_run_claude):
+            res = daily.run_research({"title": "주제 A"}, run_dir, {}, "claude", costs)
+        return {"res": res, "costs": costs}
+
+    def test_failed_call_with_error_text_is_not_reused(self):
+        """한도 초과처럼 실패한 호출이 오류 문장을 돌려줘도 조사 노트로 쓰지 않고, 다음 실행에서 다시 조사한다."""
+        limit = {"is_error": True, "result": "사용량 한도에 도달했습니다.", "total_cost_usd": 0}
+        good = {"is_error": False, "result": "# 조사 노트\n- 근거 …", "total_cost_usd": 0.5}
+        with tempfile.TemporaryDirectory() as d:
+            run_dir, calls = Path(d), []
+            first = self._run(run_dir, {"market": (0, good), "youtube": (1, limit), "blog": (0, limit)}, calls)
+            self.assertEqual(first["res"], {"market": True, "youtube": False, "blog": False})
+            for persp in ("youtube", "blog"):  # 종료 코드가 0 이어도 is_error 면 실패
+                note = (run_dir / "01_research" / f"{persp}.md").read_text(encoding="utf-8")
+                self.assertTrue(note.startswith(daily.RESEARCH_FAIL_MARK))
+                self.assertNotIn("한도", note)
+            calls.clear()
+            second = self._run(run_dir, {p: (0, good) for p in daily.RESEARCH_PERSPECTIVES}, calls)
+            self.assertEqual(sorted(calls), ["blog", "youtube"])  # 성공했던 market 만 재사용
+            self.assertEqual(second["res"], {"market": True, "youtube": True, "blog": True})
+            self.assertEqual(second["costs"], {"youtube": 0.5, "blog": 0.5})
 
 
 class ArgvTest(unittest.TestCase):
@@ -268,7 +336,8 @@ class SummaryTextTest(unittest.TestCase):
             text = daily.build_summary_text("2026-10-03", {"title": "주제 A"}, Path(d), 125 * 60, 7.123)
             self.assertTrue(text.startswith("[OSMU] 2026-10-03 실패"))
             self.assertIn("주제: 주제 A", text)
-            self.assertIn("125분 · 추정 $7.12", text)
+            self.assertIn("125분 · Claude 비용 $7.12", text)
+            self.assertIn("이번 실행에서 확인된", text)
             self.assertIn("외부 서비스 별도", text)
 
     def test_summary_text_partial(self):
