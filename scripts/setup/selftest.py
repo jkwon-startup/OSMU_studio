@@ -107,9 +107,15 @@ def _image_size(path: Path) -> str:
 
 
 def check_pixverse(env, cfg):
+    """Pixverse 를 이미지 서비스로 골랐으면(image_provider=pixverse) 로그인뿐 아니라 실제로 1장 만들어 본다(크레딧 사용).
+    고르지 않았으면 설치돼 있을 때 로그인만 확인하고, 없으면 건너뛴다."""
+    selected = cfg.get("image_provider") == "pixverse"
     cli = _pixverse_cmd(env)
     if not cli:
-        return None, "Pixverse CLI 없음 — 건너뜀 (npm install -g pixverse 또는 .env PIXVERSE_CLI=index.js 경로)"
+        hint = "Node.js 18+ 설치 후 npm install -g pixverse → pixverse auth login (또는 .env PIXVERSE_CLI=index.js 경로)"
+        if selected:
+            return False, f"image_provider 가 pixverse 인데 Pixverse CLI 가 없음 — {hint}"
+        return None, f"Pixverse CLI 없음 — 건너뜀 ({hint})"
     p = subprocess.run(cli + ["auth", "status", "--json"], capture_output=True, text=True, timeout=60, encoding="utf-8", errors="replace")
     if p.returncode != 0:
         return False, f"auth status 실패 (exit {p.returncode}) — pixverse auth login 필요"
@@ -117,9 +123,17 @@ def check_pixverse(env, cfg):
     try:
         info = json.loads(p2.stdout)
         credit = info.get("credit") or info.get("credits") or info.get("balance") or info
-        return True, f"로그인됨, 계정 정보 수신 (크레딧 필드: {str(credit)[:80]})"
+        ok, detail = True, f"로그인됨, 계정 정보 수신 (크레딧 필드: {str(credit)[:80]})"
     except json.JSONDecodeError:
-        return p2.returncode == 0, (p2.stdout or p2.stderr)[:120]
+        ok, detail = p2.returncode == 0, (p2.stdout or p2.stderr)[:120]
+    if not (ok and selected):
+        return ok, detail
+    from image import generate
+    out = OUT / "pixverse_test.jpg"
+    made, d = generate.pixverse_image(TEST_IMAGE_PROMPT, "3:4", out, env, cfg)
+    if not made:
+        return False, f"로그인은 됐지만 이미지 생성 실패 — {d[:160]} (크레딧·요금제 확인: pixverse account info)"
+    return True, f"로그인됨 + 이미지 1장 생성 → {out.name} {_image_size(out)}"
 
 
 def _pixverse_cmd(env) -> list[str] | None:
@@ -244,7 +258,7 @@ CHECKS = [
     ("slack", "Slack 알림", check_slack),
     ("telegram", "텔레그램 알림", check_telegram),
     ("gemini_image", "Gemini 이미지 3:4", check_gemini_image),
-    ("pixverse", "Pixverse CLI 로그인", check_pixverse),
+    ("pixverse", "Pixverse CLI 로그인(+선택 시 이미지 1장)", check_pixverse),
     ("elevenlabs", "ElevenLabs TTS + 타임스탬프", check_elevenlabs),
     ("gemini_tts", "Gemini TTS", check_gemini_tts),
     ("youtube", "YouTube Data API", check_youtube),

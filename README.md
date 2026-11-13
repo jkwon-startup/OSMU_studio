@@ -257,6 +257,20 @@ output/runs/2026-10-25/
 
 실행 중 터미널을 닫았거나 컴퓨터가 꺼졌다면 같은 명령(`daily.py --now`)을 다시 실행하세요. 끝난 조사와 제작 단계는 건너뛰고 이어서 합니다.
 
+### 직접 만든 이미지·클립으로 바꾸기
+
+마음에 안 드는 장면은 내가 만든 파일로 바꿀 수 있습니다. **같은 이름으로 덮어쓰고** 다시 합성하면 자막·음성·길이는 그대로 두고 화면만 바뀝니다. 크기·비율이 달라도 자동으로 맞춰 잘리고, 짧은 클립은 반복됩니다.
+
+| 바꿀 것 | 파일 (`output/runs/<날짜>/` 아래) | 바꾼 뒤 |
+|---|---|---|
+| 숏츠 장면 사진 | `08_shorts/scenes/<이름>.jpg` | `python scripts/osmu.py video build --run output/runs/<날짜>` |
+| 숏츠 클립 | `08_shorts/clips/<이름>.mp4` | 위와 같음 |
+| 블로그 이미지 | `images/blog_1.jpg` ~ `blog_5.jpg` | 없음 |
+| 인스타 배경 | `images/instagram_bg.jpg` | `python scripts/osmu.py compose --run output/runs/<날짜> --text "<카피>"` |
+
+- 어떤 장면이 어느 파일인지는 `08_shorts/plan.json` 의 `shots` 에 있습니다. `video all`·`video auto-plan` 은 장면 계획을 새로 쓰므로 교체 뒤에는 `video build` 만 쓰세요.
+- 장면 사진·클립은 **실사 스타일** 숏츠에만 있습니다. 모션그래픽 스타일은 `templates/motion/` 의 HTML 을 고칩니다.
+
 Claude Code 안에서 `/osmu-run run=output/runs/<날짜>` 로 제작 세션만 다시 돌릴 수 있고(끝난 단계는 건너뜀), `/osmu-style` 로 참고 계정 문체 프로파일을 다시 만들 수 있습니다.
 
 문제가 생기면 [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) 를 먼저 보세요.
