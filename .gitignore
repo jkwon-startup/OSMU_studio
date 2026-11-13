@@ -12,6 +12,9 @@ _workspace/
 logs/
 .claude/settings.local.json
 
+# 내부 문서(개발 계획·기획·업데이트 계획) — 저장소에 올리지 않는다
+docs/internal/
+
 # 실행 환경
 .venv/
 __pycache__/

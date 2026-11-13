@@ -15,8 +15,6 @@ A Claude Code content team that turns one topic into a Korean blog post, five im
 > - **Video quality**: background music with ducking, six transitions, 9:16 · 1:1 · 16:9, Korean-safe caption alignment
 > - **HTML motion templates**: one scene = one HTML file, add designs with CSS; Remotion is optional
 > - **Install & ops**: installer plugin, Docker, preflight checks before spending money, brand tokens, stronger review gates
->
-> Details (Korean): [docs/UPDATE-1.1.md](docs/UPDATE-1.1.md)
 
 ## Requirements
 

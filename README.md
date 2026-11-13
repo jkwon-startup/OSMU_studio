@@ -16,8 +16,6 @@
 > - **영상 품질**: 배경음악(내레이션 때 자동으로 작아짐), 장면 전환 6종, 9:16·1:1·16:9, 한글 자막 정렬("3가지" ↔ "세 가지")
 > - **HTML 모션 템플릿**: 장면 하나 = HTML 파일 하나, CSS 로 디자인 추가. Remotion 은 선택 사항
 > - **설치·운영**: 설치 도우미 플러그인, Docker, 비용 쓰기 전 사전 점검, 브랜드 토큰, 검수 강화
->
-> 자세히: [docs/UPDATE-1.1.md](docs/UPDATE-1.1.md)
 
 ## 필요한 것
 
@@ -276,9 +274,7 @@ docker compose run --rm --entrypoint python osmu scripts/run/daily.py --now
 
 ## 문서
 
-- `docs/UPDATE-1.1.md` — 1.1 업데이트 내용(무료 경로·영상 품질·HTML 모션·설치 도우미)과 기존 사용자 업데이트 방법
 - `docs/TROUBLESHOOTING.md` — 자주 막히는 곳과 해결
-- `docs/DEVELOPMENT-PLAN.md` — 설계와 결정 기록
 - `rules/` — 팀원이 읽는 글쓰기·채널 규칙 (여기를 고치면 결과물이 바뀝니다)
 - `templates/motion/README.md` — 모션 템플릿 만들기
 - `NOTICE.md` — 제3자 자료·라이선스·참고한 오픈소스
