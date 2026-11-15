@@ -246,6 +246,19 @@ class MainRecoveryTest(unittest.TestCase):
         self.assertEqual(self.produced, 0)
         self.assertTrue(self.lock_path.exists())  # 남의 잠금은 건드리지 않는다
 
+    def test_named_test_run_then_real_run_on_same_day(self):
+        """`--now --date test` 는 output/runs/test 에 따로 만들고, 같은 날의 실제 실행(날짜 폴더)을 막지 않는다."""
+        self.assertEqual(daily.main(["--now", "--date", "test"]), daily.EXIT_OK)
+        self.assertTrue((self.out / "runs" / "test" / "summary.json").exists())
+        self.assertFalse(self.run_dir.exists())
+        self.assertEqual(daily.run_entry("test")["status"], "done")
+        self.assertEqual(daily.run_entry(self.DATE), {})
+        self.assertIn("[OSMU] test 완료", self.notes[-1])
+        self.assertEqual(daily.main(["--now"]), daily.EXIT_OK)  # 같은 날 완성본
+        self.assertTrue((self.run_dir / "summary.json").exists())
+        self.assertEqual(self.produced, 2)
+        self.assertEqual(daily.run_entry(self.DATE)["status"], "done")
+
     def test_no_topic_notifies_once_per_day(self):
         from topics import select
         with mock.patch.object(select, "select_topic", lambda cfg: None):
